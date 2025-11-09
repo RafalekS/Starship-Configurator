@@ -602,12 +602,28 @@ class StarshipConfigurator(QMainWindow):
             QCheckBox::indicator {
                 width: 18px;
                 height: 18px;
-                border: 1px solid #cccccc;
+                border: 2px solid #666666;
                 border-radius: 3px;
                 background-color: white;
             }
             QCheckBox::indicator:checked {
                 background-color: #0078d4;
+                border: 2px solid #0078d4;
+                image: url(none);
+            }
+            QCheckBox::indicator:checked:after {
+                content: "✓";
+            }
+            QListWidget::indicator {
+                width: 18px;
+                height: 18px;
+                border: 2px solid #666666;
+                border-radius: 3px;
+                background-color: white;
+            }
+            QListWidget::indicator:checked {
+                background-color: #0078d4;
+                border: 2px solid #0078d4;
             }
             QLabel {
                 color: #000000;
@@ -722,12 +738,24 @@ class StarshipConfigurator(QMainWindow):
             QCheckBox::indicator {
                 width: 18px;
                 height: 18px;
-                border: 1px solid #3c3c3c;
+                border: 2px solid #888888;
                 border-radius: 3px;
-                background-color: #2d2d2d;
+                background-color: #1e1e1e;
             }
             QCheckBox::indicator:checked {
                 background-color: #0078d4;
+                border: 2px solid #0078d4;
+            }
+            QListWidget::indicator {
+                width: 18px;
+                height: 18px;
+                border: 2px solid #888888;
+                border-radius: 3px;
+                background-color: #1e1e1e;
+            }
+            QListWidget::indicator:checked {
+                background-color: #0078d4;
+                border: 2px solid #0078d4;
             }
             QLabel {
                 color: #e0e0e0;
@@ -1158,7 +1186,7 @@ class StarshipConfigurator(QMainWindow):
             QMessageBox.critical(self, "❌ Parse Error", f"Invalid TOML:\n{e}")
 
     def _generate_preview(self):
-        """Generate preview using starship prompt command."""
+        """Generate preview by showing the current configuration."""
         try:
             self._update_config_from_gui()
 
@@ -1168,36 +1196,40 @@ class StarshipConfigurator(QMainWindow):
                 f.write(self.config_data.as_string())
 
             try:
-                # Execute starship prompt (or try print-config as fallback)
-                # First try 'starship prompt' which shows the actual prompt
+                # Use starship print-config to show the parsed configuration
+                # Set STARSHIP_CONFIG environment variable
+                env = os.environ.copy()
+                env['STARSHIP_CONFIG'] = temp_path
+
                 result = subprocess.run(
-                    ['starship', 'prompt', '--config', temp_path],
+                    ['starship', 'print-config'],
                     capture_output=True,
                     text=True,
                     timeout=5,
                     encoding='utf-8',
-                    env={**os.environ, 'STARSHIP_CONFIG': temp_path}
+                    env=env
                 )
 
                 if result.returncode == 0:
-                    self.preview_text.setPlainText(result.stdout.strip())
-                    self.status_bar.showMessage("✨ Preview generated", 3000)
+                    # Show the parsed config
+                    preview_text = "📋 Configuration Preview (as parsed by Starship):\n"
+                    preview_text += "=" * 60 + "\n\n"
+                    preview_text += result.stdout.strip()
+                    preview_text += "\n\n" + "=" * 60
+                    preview_text += "\n💡 Save your config and restart your terminal to see the actual prompt."
+
+                    self.preview_text.setPlainText(preview_text)
+                    self.status_bar.showMessage("✨ Config preview generated", 3000)
                 else:
-                    # Fallback: try print-config to show the parsed config
-                    result2 = subprocess.run(
-                        ['starship', 'print-config', '--config', temp_path],
-                        capture_output=True,
-                        text=True,
-                        timeout=5,
-                        encoding='utf-8'
-                    )
-                    if result2.returncode == 0:
-                        self.preview_text.setPlainText(
-                            "Config Preview (parsed):\n\n" + result2.stdout.strip()
-                        )
-                        self.status_bar.showMessage("✨ Config preview shown", 3000)
-                    else:
-                        self.preview_text.setPlainText(f"❌ Error:\n{result.stderr}")
+                    # Fallback: just show the raw TOML
+                    preview_text = "📋 Your Configuration:\n"
+                    preview_text += "=" * 60 + "\n\n"
+                    preview_text += self.config_data.as_string()
+                    preview_text += "\n\n" + "=" * 60
+                    preview_text += "\n💡 Save and restart your terminal to see changes."
+
+                    self.preview_text.setPlainText(preview_text)
+                    self.status_bar.showMessage("⚠️ Showing raw config (starship command issue)", 3000)
 
             finally:
                 # Clean up temp file
@@ -1207,11 +1239,18 @@ class StarshipConfigurator(QMainWindow):
                     pass
 
         except FileNotFoundError:
-            self.preview_text.setPlainText(
-                "❌ ERROR: 'starship' command not found.\n\n"
-                "Please install Starship:\n"
-                "https://starship.rs/guide/#-installation"
-            )
+            # If starship isn't installed, just show the config
+            preview_text = "📋 Your Configuration:\n"
+            preview_text += "=" * 60 + "\n\n"
+            preview_text += self.config_data.as_string()
+            preview_text += "\n\n" + "=" * 60
+            preview_text += "\n\n⚠️ 'starship' command not found.\n"
+            preview_text += "Install Starship to validate your config:\n"
+            preview_text += "https://starship.rs/guide/#-installation"
+
+            self.preview_text.setPlainText(preview_text)
+            self.status_bar.showMessage("⚠️ Starship not installed - showing raw config", 3000)
+
         except subprocess.TimeoutExpired:
             self.preview_text.setPlainText("❌ Preview timed out")
         except Exception as e:
