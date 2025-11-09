@@ -147,11 +147,7 @@ class StarshipConfigurator(QMainWindow):
         global_tab = self._create_global_settings_tab()
         self.main_tabs.addTab(global_tab, "⚙️ Global Settings")
 
-        # === TAB 3: Preview ===
-        preview_tab = self._create_preview_tab()
-        self.main_tabs.addTab(preview_tab, "✨ Preview")
-
-        # === TAB 4: TOML Editor ===
+        # === TAB 3: TOML Editor ===
         toml_tab = self._create_toml_editor_tab()
         self.main_tabs.addTab(toml_tab, "📝 TOML Editor")
 
@@ -255,6 +251,32 @@ class StarshipConfigurator(QMainWindow):
         general_group.setLayout(general_layout)
         panel_layout.addWidget(general_group)
 
+        # === UI Settings ===
+        ui_group = QGroupBox("User Interface Settings")
+        ui_layout = QGridLayout()
+        row = 0
+
+        ui_layout.addWidget(QLabel("Interface Font Size:"), row, 0)
+        self.font_size_spin = QSpinBox()
+        self.font_size_spin.setRange(8, 24)
+        self.font_size_spin.setValue(9)
+        self.font_size_spin.setToolTip("Adjust the size of text throughout the application")
+        self.font_size_spin.valueChanged.connect(self._update_app_font_size)
+        ui_layout.addWidget(self.font_size_spin, row, 1)
+        row += 1
+
+        ui_layout.addWidget(QLabel("Code Editor Font Size:"), row, 0)
+        self.code_font_size_spin = QSpinBox()
+        self.code_font_size_spin.setRange(8, 24)
+        self.code_font_size_spin.setValue(10)
+        self.code_font_size_spin.setToolTip("Adjust the size of monospace text in TOML editor")
+        self.code_font_size_spin.valueChanged.connect(self._update_code_font_size)
+        ui_layout.addWidget(self.code_font_size_spin, row, 1)
+        row += 1
+
+        ui_group.setLayout(ui_layout)
+        panel_layout.addWidget(ui_group)
+
         # === Performance Settings ===
         perf_group = QGroupBox("Performance Settings")
         perf_layout = QGridLayout()
@@ -305,46 +327,6 @@ class StarshipConfigurator(QMainWindow):
 
         scroll.setWidget(panel)
         layout.addWidget(scroll)
-
-        return tab
-
-    def _create_preview_tab(self) -> QWidget:
-        """Create the preview tab with large preview area."""
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(10, 10, 10, 10)
-
-        # Title and description
-        title = QLabel("✨ Configuration Preview")
-        title.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px;")
-        layout.addWidget(title)
-
-        desc = QLabel("Preview how Starship will parse your configuration. Save and restart your terminal to see the actual prompt.")
-        desc.setStyleSheet("padding: 5px; color: #666;")
-        desc.setWordWrap(True)
-        layout.addWidget(desc)
-
-        # Large preview area
-        self.preview_text = QTextEdit()
-        self.preview_text.setReadOnly(True)
-        self.preview_text.setPlaceholderText("Click 'Generate Preview' to see your configuration...")
-        self.preview_text.setFont(QFont("Monospace", 10))
-        layout.addWidget(self.preview_text)
-
-        # Action buttons
-        button_layout = QHBoxLayout()
-
-        self.preview_button = QPushButton("✨ Generate Preview")
-        self.preview_button.clicked.connect(self._generate_preview)
-        button_layout.addWidget(self.preview_button)
-
-        self.save_button = QPushButton("💾 Save Configuration")
-        self.save_button.clicked.connect(self._save_config)
-        button_layout.addWidget(self.save_button)
-
-        button_layout.addStretch()
-
-        layout.addLayout(button_layout)
 
         return tab
 
@@ -629,8 +611,6 @@ class StarshipConfigurator(QMainWindow):
         # Quick actions
         toolbar.addAction("💾 Save", self._save_config)
         toolbar.addAction("📂 Load", self._load_config_from_file)
-        toolbar.addSeparator()
-        toolbar.addAction("✨ Preview", self._generate_preview)
         toolbar.addSeparator()
         toolbar.addAction("🔄 Reload", self._reload_config)
         toolbar.addSeparator()
@@ -1300,77 +1280,6 @@ class StarshipConfigurator(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "❌ Parse Error", f"Invalid TOML:\n{e}")
 
-    def _generate_preview(self):
-        """Generate preview by showing the current configuration."""
-        try:
-            self._update_config_from_gui()
-
-            # Create temporary config file
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False, encoding='utf-8') as f:
-                temp_path = f.name
-                f.write(self.config_data.as_string())
-
-            try:
-                # Use starship print-config to show the parsed configuration
-                # Set STARSHIP_CONFIG environment variable
-                env = os.environ.copy()
-                env['STARSHIP_CONFIG'] = temp_path
-
-                result = subprocess.run(
-                    ['starship', 'print-config'],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                    encoding='utf-8',
-                    env=env
-                )
-
-                if result.returncode == 0:
-                    # Show the parsed config
-                    preview_text = "📋 Configuration Preview (as parsed by Starship):\n"
-                    preview_text += "=" * 60 + "\n\n"
-                    preview_text += result.stdout.strip()
-                    preview_text += "\n\n" + "=" * 60
-                    preview_text += "\n💡 Save your config and restart your terminal to see the actual prompt."
-
-                    self.preview_text.setPlainText(preview_text)
-                    self.status_bar.showMessage("✨ Config preview generated", 3000)
-                else:
-                    # Fallback: just show the raw TOML
-                    preview_text = "📋 Your Configuration:\n"
-                    preview_text += "=" * 60 + "\n\n"
-                    preview_text += self.config_data.as_string()
-                    preview_text += "\n\n" + "=" * 60
-                    preview_text += "\n💡 Save and restart your terminal to see changes."
-
-                    self.preview_text.setPlainText(preview_text)
-                    self.status_bar.showMessage("⚠️ Showing raw config (starship command issue)", 3000)
-
-            finally:
-                # Clean up temp file
-                try:
-                    os.unlink(temp_path)
-                except:
-                    pass
-
-        except FileNotFoundError:
-            # If starship isn't installed, just show the config
-            preview_text = "📋 Your Configuration:\n"
-            preview_text += "=" * 60 + "\n\n"
-            preview_text += self.config_data.as_string()
-            preview_text += "\n\n" + "=" * 60
-            preview_text += "\n\n⚠️ 'starship' command not found.\n"
-            preview_text += "Install Starship to validate your config:\n"
-            preview_text += "https://starship.rs/guide/#-installation"
-
-            self.preview_text.setPlainText(preview_text)
-            self.status_bar.showMessage("⚠️ Starship not installed - showing raw config", 3000)
-
-        except subprocess.TimeoutExpired:
-            self.preview_text.setPlainText("❌ Preview timed out")
-        except Exception as e:
-            self.preview_text.setPlainText(f"❌ Error: {e}")
-
     # === Schema Handling ===
 
     def _on_schema_loaded(self, schema: Dict):
@@ -1383,6 +1292,17 @@ class StarshipConfigurator(QMainWindow):
         self.status_bar.showMessage(f"⚠️ Schema unavailable: {error}", 5000)
 
     # === Utility Methods ===
+
+    def _update_app_font_size(self, size: int):
+        """Update the application-wide font size."""
+        font = QFont("Sans Serif", size)
+        QApplication.instance().setFont(font)
+        self.status_bar.showMessage(f"Interface font size: {size}pt", 2000)
+
+    def _update_code_font_size(self, size: int):
+        """Update the code editor font size."""
+        self.full_config_editor.setFont(QFont("Monospace", size))
+        self.status_bar.showMessage(f"Code editor font size: {size}pt", 2000)
 
     def _toggle_theme(self):
         """Toggle between light and dark themes."""
