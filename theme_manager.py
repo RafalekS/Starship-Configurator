@@ -172,6 +172,114 @@ QPushButton:disabled {{
     color: {theme.get('brightBlack', '#666666')};
 }}
 
+/* QSpinBox */
+QSpinBox {{
+    background-color: {theme.get('black', '#1E1E1E')};
+    color: {fg};
+    border: 1px solid {border};
+    border-radius: 3px;
+    padding: 5px;
+    selection-background-color: {selection};
+}}
+
+QSpinBox:focus {{
+    border: 1px solid {accent};
+}}
+
+QSpinBox::up-button {{
+    background-color: {theme.get('brightBlack', '#2A2A2A')};
+    border: none;
+    border-radius: 2px;
+    width: 16px;
+}}
+
+QSpinBox::up-button:hover {{
+    background-color: {accent};
+}}
+
+QSpinBox::down-button {{
+    background-color: {theme.get('brightBlack', '#2A2A2A')};
+    border: none;
+    border-radius: 2px;
+    width: 16px;
+}}
+
+QSpinBox::down-button:hover {{
+    background-color: {accent};
+}}
+
+QSpinBox::up-arrow {{
+    image: none;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-bottom: 4px solid {fg};
+    margin: 2px;
+}}
+
+QSpinBox::down-arrow {{
+    image: none;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 4px solid {fg};
+    margin: 2px;
+}}
+
+/* QCheckBox */
+QCheckBox {{
+    color: {fg};
+    spacing: 5px;
+}}
+
+QCheckBox::indicator {{
+    width: 18px;
+    height: 18px;
+    border: 2px solid {border};
+    border-radius: 3px;
+    background-color: {theme.get('black', '#1E1E1E')};
+}}
+
+QCheckBox::indicator:hover {{
+    border: 2px solid {accent};
+}}
+
+QCheckBox::indicator:checked {{
+    background-color: {accent};
+    border: 2px solid {accent};
+}}
+
+QCheckBox::indicator:checked:hover {{
+    background-color: {bright_accent};
+    border: 2px solid {bright_accent};
+}}
+
+QCheckBox::indicator:disabled {{
+    background-color: {disabled};
+    border: 2px solid {disabled};
+}}
+
+/* QListWidget Checkboxes */
+QListWidget::indicator {{
+    width: 18px;
+    height: 18px;
+    border: 2px solid {border};
+    border-radius: 3px;
+    background-color: {theme.get('black', '#1E1E1E')};
+}}
+
+QListWidget::indicator:hover {{
+    border: 2px solid {accent};
+}}
+
+QListWidget::indicator:checked {{
+    background-color: {accent};
+    border: 2px solid {accent};
+}}
+
+QListWidget::indicator:checked:hover {{
+    background-color: {bright_accent};
+    border: 2px solid {bright_accent};
+}}
+
 /* Combo Box */
 QComboBox {{
     background-color: {theme.get('black', '#1E1E1E')};
@@ -349,6 +457,60 @@ QProgressBar {{
 QProgressBar::chunk {{
     background-color: {accent};
     border-radius: 2px;
+}}
+
+/* QTabWidget */
+QTabWidget::pane {{
+    border: 1px solid {border};
+    background-color: {bg};
+}}
+
+QTabBar::tab {{
+    background-color: {theme.get('brightBlack', '#2A2A2A')};
+    color: {fg};
+    border: 1px solid {border};
+    padding: 8px 16px;
+    margin-right: 2px;
+}}
+
+QTabBar::tab:selected {{
+    background-color: {accent};
+    color: {theme.get('white', '#FFFFFF')};
+    border-bottom: 2px solid {bright_accent};
+}}
+
+QTabBar::tab:hover {{
+    background-color: {theme.get('brightBlack', '#3A3A3A')};
+}}
+
+QTabBar::tab:selected:hover {{
+    background-color: {bright_accent};
+}}
+
+/* QToolBar */
+QToolBar {{
+    background-color: {bg};
+    border: 1px solid {border};
+    spacing: 3px;
+    padding: 3px;
+}}
+
+QToolButton {{
+    background-color: transparent;
+    color: {fg};
+    border: 1px solid transparent;
+    border-radius: 3px;
+    padding: 5px 8px;
+}}
+
+QToolButton:hover {{
+    background-color: {theme.get('brightBlack', '#2A2A2A')};
+    border: 1px solid {border};
+}}
+
+QToolButton:pressed {{
+    background-color: {accent};
+    border: 1px solid {accent};
 }}
 
 /* Dialog */

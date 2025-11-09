@@ -6,6 +6,9 @@ import tempfile
 from pathlib import Path
 from typing import Dict, Any, Optional
 
+# Suppress Qt font warnings
+os.environ['QT_LOGGING_RULES'] = '*.debug=false;qt.qpa.*=false'
+
 # Third-party libraries
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -111,6 +114,9 @@ class StarshipConfigurator(QMainWindow):
         self.schema_data = None
         self.module_widgets = {}  # Store widget references by module
 
+        # App preferences file
+        self.prefs_path = Path.home() / '.config' / 'starship-configurator' / 'preferences.json'
+
         # Theme manager
         self.theme_manager = ThemeManager(themes_file="themes.json")
 
@@ -120,8 +126,13 @@ class StarshipConfigurator(QMainWindow):
         self._create_toolbar()
         self._create_status_bar()
 
-        # Apply default theme
-        self._apply_selected_theme("Atom")
+        # Load preferences and apply saved theme
+        prefs = self._load_preferences()
+        saved_theme = prefs.get('theme', 'Atom')
+        self._apply_selected_theme(saved_theme)
+
+        # Set theme combo to saved value
+        self.theme_combo.setCurrentText(saved_theme)
 
         # Load config after UI is ready
         self._load_initial_config()
@@ -1088,6 +1099,30 @@ class StarshipConfigurator(QMainWindow):
         """Apply the selected theme from theme manager."""
         self.theme_manager.apply_theme(QApplication.instance(), theme_name)
         self.status_bar.showMessage(f"Applied theme: {theme_name}", 2000)
+
+        # Save theme preference
+        prefs = self._load_preferences()
+        prefs['theme'] = theme_name
+        self._save_preferences(prefs)
+
+    def _load_preferences(self) -> Dict:
+        """Load user preferences from JSON file."""
+        try:
+            if self.prefs_path.exists():
+                with open(self.prefs_path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+        except Exception as e:
+            print(f"Failed to load preferences: {e}")
+        return {}
+
+    def _save_preferences(self, prefs: Dict):
+        """Save user preferences to JSON file."""
+        try:
+            self.prefs_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.prefs_path, 'w', encoding='utf-8') as f:
+                json.dump(prefs, f, indent=2)
+        except Exception as e:
+            print(f"Failed to save preferences: {e}")
 
     def _open_url(self, url: str):
         """Open URL in default browser."""
