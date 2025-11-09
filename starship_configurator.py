@@ -878,9 +878,16 @@ class StarshipConfigurator(QMainWindow):
 
     def _update_module_list(self):
         """Update the module list based on category and search."""
+        # Disconnect signals temporarily to prevent multiple triggers
+        try:
+            self.module_list.currentRowChanged.disconnect()
+            self.module_list.itemChanged.disconnect()
+        except:
+            pass
+
         self.module_list.clear()
 
-        # Add global settings
+        # Add global settings (no checkbox)
         global_item = QListWidgetItem("⚙️ Global Settings")
         self.module_list.addItem(global_item)
 
@@ -899,19 +906,63 @@ class StarshipConfigurator(QMainWindow):
         if search_text:
             modules = [m for m in modules if search_text in m.lower()]
 
-        # Add modules to list
+        # Add modules to list with checkboxes
         for module in modules:
-            icon = "✅" if (self.config_data and module in self.config_data) else "📦"
-            item = QListWidgetItem(f"{icon} {module}")
+            # Check if module is enabled in config
+            is_enabled = False
+            if self.config_data and module in self.config_data:
+                module_config = self.config_data[module]
+                # Module is enabled if it exists and disabled is not True
+                is_enabled = not module_config.get('disabled', False)
+
+            item = QListWidgetItem(f"  {module}")
             item.setData(Qt.ItemDataRole.UserRole, module)
+
+            # Make item checkable
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked if is_enabled else Qt.CheckState.Unchecked)
+
             self.module_list.addItem(item)
 
-        # Connect selection signal
+        # Reconnect signals
         self.module_list.currentRowChanged.connect(self._on_module_selected)
+        self.module_list.itemChanged.connect(self._on_module_checkbox_changed)
 
     def _filter_modules(self, text: str):
         """Filter module list based on search text."""
         self._update_module_list()
+
+    def _on_module_checkbox_changed(self, item: QListWidgetItem):
+        """Handle module checkbox toggle."""
+        module_name = item.data(Qt.ItemDataRole.UserRole)
+        if not module_name:
+            return  # Skip global settings
+
+        is_checked = item.checkState() == Qt.CheckState.Checked
+
+        # Ensure config_data exists
+        if not self.config_data:
+            self.config_data = self._create_default_config()
+
+        # Create module table if it doesn't exist
+        if module_name not in self.config_data:
+            self.config_data[module_name] = tomlkit.table()
+
+        # Update the disabled field
+        if is_checked:
+            # Module is enabled, remove 'disabled' field if it exists
+            if 'disabled' in self.config_data[module_name]:
+                del self.config_data[module_name]['disabled']
+        else:
+            # Module is disabled, set 'disabled' to true
+            self.config_data[module_name]['disabled'] = True
+
+        # Update the TOML editor
+        self._update_full_editor()
+
+        # Update status bar
+        status = "enabled" if is_checked else "disabled"
+        self.status_bar.showMessage(f"Module '{module_name}' {status}", 2000)
 
     def _on_module_selected(self, row: int):
         """Handle module selection from list."""
@@ -1107,7 +1158,7 @@ class StarshipConfigurator(QMainWindow):
             QMessageBox.critical(self, "❌ Parse Error", f"Invalid TOML:\n{e}")
 
     def _generate_preview(self):
-        """Generate preview using starship print command."""
+        """Generate preview using starship prompt command."""
         try:
             self._update_config_from_gui()
 
@@ -1117,20 +1168,36 @@ class StarshipConfigurator(QMainWindow):
                 f.write(self.config_data.as_string())
 
             try:
-                # Execute starship print
+                # Execute starship prompt (or try print-config as fallback)
+                # First try 'starship prompt' which shows the actual prompt
                 result = subprocess.run(
-                    ['starship', 'print', '--config', temp_path],
+                    ['starship', 'prompt', '--config', temp_path],
                     capture_output=True,
                     text=True,
                     timeout=5,
-                    encoding='utf-8'
+                    encoding='utf-8',
+                    env={**os.environ, 'STARSHIP_CONFIG': temp_path}
                 )
 
                 if result.returncode == 0:
                     self.preview_text.setPlainText(result.stdout.strip())
                     self.status_bar.showMessage("✨ Preview generated", 3000)
                 else:
-                    self.preview_text.setPlainText(f"❌ Error:\n{result.stderr}")
+                    # Fallback: try print-config to show the parsed config
+                    result2 = subprocess.run(
+                        ['starship', 'print-config', '--config', temp_path],
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                        encoding='utf-8'
+                    )
+                    if result2.returncode == 0:
+                        self.preview_text.setPlainText(
+                            "Config Preview (parsed):\n\n" + result2.stdout.strip()
+                        )
+                        self.status_bar.showMessage("✨ Config preview shown", 3000)
+                    else:
+                        self.preview_text.setPlainText(f"❌ Error:\n{result.stderr}")
 
             finally:
                 # Clean up temp file
