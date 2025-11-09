@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Starship Configurator is a cross-platform PyQt6 GUI application for configuring the Starship cross-shell prompt. It provides a user-friendly interface to read, edit, and write `starship.toml` configuration files.
+Starship Configurator is a modern, cross-platform PyQt6 GUI application for configuring the Starship cross-shell prompt. It provides an intuitive, feature-rich interface to read, edit, and write `starship.toml` configuration files with schema-driven widget generation.
 
 ## Running the Application
 
@@ -22,6 +22,7 @@ python starship_configurator.py
 
 ### Requirements
 - **Python**: 3.9 or higher
+- **Dependencies**: PyQt6, tomlkit
 - **System dependency**: `starship` must be installed and available in PATH for preview functionality
 
 ## Architecture and Key Design Patterns
@@ -29,118 +30,235 @@ python starship_configurator.py
 ### Main Components
 
 **StarshipConfigurator (Main Window)**
-- Loads config from `~/.config/starship.toml` on startup using `tomlkit` for lossless parsing
-- Three-panel layout: sidebar (module list) + central area (stacked config panels) + bottom bar (actions)
+- Auto-detects config location across platforms (Windows/Linux/macOS)
+- Modern three-panel layout with resizable splitter: sidebar + config panel + bottom preview
+- Menu bar, toolbar, and status bar for full-featured application experience
+- Background thread for schema fetching to avoid blocking UI
 
-**Configuration Management**
-- `self.config_data`: tomlkit document object that preserves TOML structure, comments, and formatting
-- `_update_config_from_gui()`: Syncs all GUI widget values back to the internal TOML document
-- **Critical**: Always use `tomlkit` library (not standard `toml` or `tomllib`) to maintain lossless read/write operations
+**Configuration Path Detection** (`detect_starship_config_path()`)
+- Checks `STARSHIP_CONFIG` environment variable first
+- Platform-specific fallbacks:
+  - **Windows**: `~/.config/starship.toml`, `%APPDATA%/starship/starship.toml`, `~/starship.toml`
+  - **Linux/macOS**: `~/.config/starship.toml`, `$XDG_CONFIG_HOME/starship.toml`
+- Returns first existing path or defaults to `~/.config/starship.toml`
+
+**Schema-Driven Widget Generation**
+- `SchemaFetcher` thread fetches JSON schema from starship.rs in background
+- `_create_widget_for_schema()` generates appropriate widgets based on property types:
+  - `boolean` → QCheckBox
+  - `integer` → QSpinBox with min/max ranges
+  - `array` → QTextEdit (multi-line input)
+  - `string` → QLineEdit with placeholder hints
+- Automatically creates module-specific fields from schema properties
 
 **UI Structure**
-- **Sidebar** (`QListWidget`): Lists "Global Settings" plus common Starship modules
-- **Stacked Widget** (`QStackedWidget`): Contains dynamically generated panels for each module
-- **Module Panels**: Auto-generated with QCheckBox (enable/disable), QLineEdit (format, style, symbol)
-- **Bottom Bar**: Preview display area + action buttons (Load, Preview, Save)
+- **Left Panel**:
+  - Search box for filtering modules
+  - Category selector (Common/All/Active modules)
+  - Dynamic module list with status icons (✅ active, 📦 available)
+  - Config path display with tooltip
+- **Right Panel** (QStackedWidget):
+  - Global Settings panel (index 0)
+  - Dynamically created module panels (lazy-loaded on selection)
+  - Scroll areas for long configurations
+  - Grouped settings (Common Settings, Module-Specific Settings)
+- **Bottom Panel**:
+  - Preview area with monospace font
+  - Action buttons: Preview, Save, Export
 
 ### Data Flow
 
-1. **Load**: `_load_initial_config()` → parses TOML with tomlkit → populates `self.config_data`
-2. **Display**: Module panels created with `_create_module_panel()` → widgets initialized from config_data
-3. **Edit**: User modifies widgets in GUI
-4. **Sync**: `_update_config_from_gui()` → reads all widgets → updates `self.config_data`
-5. **Save**: Writes `config_data.as_string()` to `~/.config/starship.toml`
+1. **Startup**: `detect_starship_config_path()` → `_load_initial_config()` → `_populate_ui_from_config()`
+2. **Schema Loading**: Background `SchemaFetcher` thread → `_on_schema_loaded()` signal
+3. **Module Selection**: User clicks module → `_on_module_selected()` → `_show_module_panel()` (lazy creation)
+4. **Edit**: User modifies widgets in GUI
+5. **Sync**: `_update_config_from_gui()` → reads all widgets → updates `self.config_data`
+6. **Save**: Writes `config_data.as_string()` to detected config path
+7. **Preview**: Temp file → `starship print --config` → display output
 
-### Preview System Implementation
+### Advanced Features
 
-```python
-# Preview workflow (in _generate_preview):
-1. Write current config to /tmp/starship_temp.toml
-2. Execute: starship print --config /tmp/starship_temp.toml
-3. Capture stdout (contains ANSI escape codes)
-4. Display in read-only QTextEdit
-5. Clean up temp file
-```
+**Module Management**
+- 90+ Starship modules supported (complete list in `STARSHIP_MODULES`)
+- Common modules highlighted (`COMMON_MODULES`)
+- Active module filtering
+- Live search/filter
+- Lazy panel creation (only creates panels when modules are selected)
+
+**Configuration Flexibility**
+- Direct TOML editing with "Reload from TOML" button
+- Load/Save from arbitrary files
+- Export configurations
+- Preserves TOML structure, comments, and formatting via `tomlkit`
+
+**Cross-Platform Temp Files**
+- Uses `tempfile.NamedTemporaryFile()` for platform-agnostic temp file handling
+- Auto-cleanup in finally block
 
 ## Important Implementation Details
 
-### Module Configuration
+### Module Widget Storage
 
-**Predefined Modules** (`STARSHIP_MODULES` constant):
+**Dynamic Widget Registry** (`self.module_widgets`):
 ```python
-["character", "directory", "git_branch", "git_status", "time",
- "cmd_duration", "status", "python", "node", "rust", "aws", "gcloud"]
+{
+  'module_name': {
+    'enabled': QCheckBox,
+    'fields': {
+      'format': QLineEdit,
+      'style': QLineEdit,
+      'disabled': QCheckBox,
+      'symbol': QLineEdit,  # schema-driven fields
+      ...
+    }
+  }
+}
 ```
 
-**Dynamic Widget Naming Convention**:
-- Enable checkbox: `{module_name}_check`
-- Format input: `{module_name}_format`
-- Style input: `{module_name}_style`
-- Symbol input: `{module_name}_symbol` (only for applicable modules)
+### Global Settings
 
-### Global Settings Panel
+Configured in `_create_global_settings_panel()`:
+- `add_newline` (bool)
+- `scan_timeout` (int, milliseconds)
+- `command_timeout` (int, milliseconds)
+- `format` (custom prompt format string)
+- Full TOML editor (advanced users)
 
-The first panel (index 0) contains:
-- `add_newline` checkbox for global config
-- Advanced editor (`full_config_editor`): Direct TOML text editing as fallback
+### Styling System
 
-**Special behavior**: When saving from Global Settings view (row 0), the raw text from `full_config_editor` takes priority over structured GUI data.
+Modern CSS-like stylesheet in `_apply_styles()`:
+- Blue accent color (#0078d4) for buttons and focus states
+- Hover effects on buttons and list items
+- Rounded corners and consistent padding
+- Light gray background (#f5f5f5)
+- GroupBox styling with proper title positioning
 
 ### File Paths
 
-- Default config location: `~/.config/starship.toml` (defined in `CONFIG_PATH`)
-- Temporary preview config: `/tmp/starship_temp.toml`
-
-## Starship Configuration Resources
-
-When modifying or extending the application, reference these official Starship resources:
-
-| Resource | URL |
-|----------|-----|
-| Configuration Documentation | https://starship.rs/config/ |
-| JSON Schema (for validation) | https://starship.rs/config-schema.json |
-| Presets (example configs) | https://starship.rs/presets/ |
+- **Config detection**: See `detect_starship_config_path()` function
+- **Temp files**: `tempfile.NamedTemporaryFile()` for cross-platform compatibility
+- **Encoding**: UTF-8 for all file operations
 
 ## Code Structure
 
 ```
-starship_configurator.py (330 lines)
-├── Configuration Constants (lines 15-25)
-├── StarshipConfigurator Class (lines 29-318)
-│   ├── __init__: Initialize window, load config, build UI
-│   ├── UI Building Methods (lines 72-183)
-│   │   ├── _build_ui: Main layout construction
-│   │   ├── _create_global_settings_panel
-│   │   ├── _create_module_panel: Generic panel factory
-│   │   └── _create_bottom_bar: Action buttons + preview
-│   ├── Data Methods (lines 193-245)
-│   │   └── _update_config_from_gui: Core sync logic
-│   └── Action Methods (lines 247-318)
-│       ├── _save_config: Write to starship.toml
-│       ├── _load_config_from_file: Import external config
-│       └── _generate_preview: Execute starship print
-└── Application Entry Point (lines 323-330)
+starship_configurator.py (968 lines)
+├── Imports (lines 1-19)
+├── Constants (lines 21-48)
+│   ├── SCHEMA_URL
+│   ├── STARSHIP_MODULES (90+ modules)
+│   └── COMMON_MODULES (19 popular modules)
+├── Helper Functions (lines 51-77)
+│   └── detect_starship_config_path(): Platform-aware config detection
+├── SchemaFetcher Thread (lines 80-94)
+│   └── Background JSON schema fetching
+└── StarshipConfigurator Class (lines 99-945)
+    ├── __init__: Initialize window, detect config, build UI, start schema thread
+    ├── UI Building Methods (lines 127-575)
+    │   ├── _build_ui: Main layout with splitter
+    │   ├── _create_module_list_panel: Search + category + list
+    │   ├── _create_config_panel: Stacked widget container
+    │   ├── _create_global_settings_panel: Global config UI
+    │   ├── _create_module_panel: Schema-driven panel generation
+    │   ├── _create_widget_for_schema: Type-based widget factory
+    │   ├── _create_bottom_panel: Preview + actions
+    │   ├── _create_menu_bar: File/Edit/Help menus
+    │   ├── _create_toolbar: Quick action buttons
+    │   ├── _create_status_bar: Status messages
+    │   └── _apply_styles: Modern CSS stylesheet
+    ├── Configuration Management (lines 577-790)
+    │   ├── _load_initial_config: Load or create config
+    │   ├── _create_default_config: Minimal starter config
+    │   ├── _populate_ui_from_config: Sync config → UI
+    │   ├── _update_full_editor: Refresh TOML editor
+    │   ├── _update_module_list: Dynamic module list
+    │   ├── _filter_modules: Search implementation
+    │   ├── _on_module_selected: Handle module clicks
+    │   ├── _show_module_panel: Lazy panel creation
+    │   ├── _load_module_config: Load module data into widgets
+    │   └── _update_config_from_gui: Sync UI → config
+    ├── Action Methods (lines 792-915)
+    │   ├── _save_config: Save to starship.toml
+    │   ├── _export_config: Export to custom file
+    │   ├── _load_config_from_file: Import config
+    │   ├── _reload_config: Reload from disk
+    │   ├── _reload_from_toml_editor: Parse TOML editor
+    │   └── _generate_preview: Execute starship print
+    ├── Schema Handling (lines 917-926)
+    │   ├── _on_schema_loaded: Process fetched schema
+    │   └── _on_schema_failed: Handle fetch errors
+    └── Utility Methods (lines 928-945)
+        ├── _open_url: External browser
+        └── _show_about: About dialog
 ```
 
 ## Key Technical Constraints
 
-1. **tomlkit dependency**: Required for preserving TOML structure and comments when saving
-2. **Starship CLI dependency**: Preview feature requires `starship` binary in system PATH
-3. **Widget state sync**: Must call `_update_config_from_gui()` before any save/preview operation
-4. **Empty module cleanup**: Modules with no active fields are removed from config (line 240-241)
-5. **Config directory creation**: Ensures `~/.config/` exists before writing (line 259)
+1. **tomlkit dependency**: Required for preserving TOML structure, comments, and formatting
+2. **Starship CLI dependency**: Preview requires `starship` binary in PATH
+3. **Schema fetching**: Background thread prevents UI blocking, gracefully handles failures
+4. **Lazy loading**: Module panels created on-demand to reduce initial load time
+5. **Widget state sync**: `_update_config_from_gui()` must be called before save/preview
+6. **Cross-platform paths**: Uses `Path()` and `tempfile` for OS compatibility
+7. **UTF-8 encoding**: All file operations use explicit UTF-8 encoding
 
 ## Extending the Application
 
 ### Adding New Modules
-1. Add module name to `STARSHIP_MODULES` list (line 22-25)
-2. Panel will be auto-generated with standard fields (format, style)
-3. For custom fields (like symbol), add conditional logic in `_create_module_panel()` (line 149-156)
 
-### Adding Module-Specific Fields
-Extend the conditional blocks in:
-- `_create_module_panel()`: Add widget creation logic
-- `_update_config_from_gui()`: Add data sync logic for new field
+Modules are auto-discovered from `STARSHIP_MODULES` list:
+1. Add module name to `STARSHIP_MODULES` (line 26-40)
+2. Optionally add to `COMMON_MODULES` if frequently used (line 43-48)
+3. Panel will be auto-generated with schema-based fields
+4. No other code changes required
 
-### Schema-Driven Approach (Future Enhancement)
-The `SCHEMA_URL` constant (line 19) points to Starship's JSON schema. A future improvement could fetch this schema and dynamically generate appropriate input widgets for each module's specific properties.
+### Adding Custom Widget Types
+
+Extend `_create_widget_for_schema()` (line 378-404):
+```python
+elif prop_type == 'color':
+    widget = QColorDialog()
+    # Add color picker logic
+    return widget
+```
+
+### Customizing UI Theme
+
+Modify `_apply_styles()` (line 509-575):
+- Change accent color (#0078d4)
+- Adjust padding/margins
+- Update hover effects
+- Modify font sizes
+
+### Adding Preset Configurations
+
+Create a new method to load preset configs:
+```python
+def _load_preset(self, preset_name: str):
+    preset_url = f'https://starship.rs/presets/{preset_name}.toml'
+    # Fetch and load preset
+```
+
+## Starship Configuration Resources
+
+| Resource | URL |
+|----------|-----|
+| Configuration Documentation | https://starship.rs/config/ |
+| JSON Schema (auto-loaded) | https://starship.rs/config-schema.json |
+| Presets (example configs) | https://starship.rs/presets/ |
+| Module Documentation | https://starship.rs/config/#modules |
+
+## Performance Optimizations
+
+1. **Lazy Panel Creation**: Module panels only created when selected (not all 90+ upfront)
+2. **Background Schema Fetching**: Non-blocking network request
+3. **Efficient Widget Lookup**: Dictionary-based widget registry (`self.module_widgets`)
+4. **Minimal Redraws**: QStackedWidget shows/hides panels without recreation
+5. **Search Optimization**: List filtering done in Python (fast for 90 items)
+
+## Known Limitations
+
+1. **ANSI Preview**: Preview shows ANSI codes as text (Qt doesn't render ANSI natively)
+2. **Schema Fields Limit**: Only first 10 schema fields shown per module to avoid UI clutter
+3. **No Undo/Redo**: Changes are applied immediately (use "Reload from Disk" to revert)
+4. **Single Instance**: No inter-instance communication or file locking

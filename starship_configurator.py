@@ -1,28 +1,98 @@
 import sys
 import os
 import subprocess
+import json
+import tempfile
 from pathlib import Path
+from typing import Dict, Any, Optional
 
 # Third-party libraries
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QListWidget, QStackedWidget, QLineEdit, QCheckBox, QPushButton,
-    QTextEdit, QLabel, QFileDialog, QMessageBox, QTabWidget, QGridLayout
+    QTextEdit, QLabel, QFileDialog, QMessageBox, QGridLayout,
+    QScrollArea, QGroupBox, QComboBox, QSpinBox, QListWidgetItem,
+    QToolBar, QStatusBar, QSplitter
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSize, QThread, pyqtSignal
+from PyQt6.QtGui import QFont, QIcon, QAction
 import tomlkit
 
 # --- Configuration Constants ---
 
-# Default path for starship.toml
-CONFIG_PATH = Path.home() / ".config" / "starship.toml"
-SCHEMA_URL = '[https://starship.rs/config-schema.json](https://starship.rs/config-schema.json)'
+SCHEMA_URL = 'https://starship.rs/config-schema.json'
 
-# Basic Starship Modules for Sidebar
+# Comprehensive Starship Modules
 STARSHIP_MODULES = [
-    "character", "directory", "git_branch", "git_status", "time", 
-    "cmd_duration", "status", "python", "node", "rust", "aws", "gcloud"
+    "aws", "azure", "battery", "buf", "bun", "c", "character", "cmake",
+    "cmd_duration", "cobol", "conda", "container", "crystal", "daml",
+    "dart", "deno", "directory", "direnv", "docker_context", "dotnet",
+    "elixir", "elm", "env_var", "erlang", "fennel", "fill", "fossil_branch",
+    "fossil_metrics", "gcloud", "git_branch", "git_commit", "git_metrics",
+    "git_state", "git_status", "golang", "gradle", "guix_shell", "haskell",
+    "haxe", "helm", "hostname", "java", "jobs", "julia", "kotlin", "kubernetes",
+    "line_break", "localip", "lua", "memory_usage", "meson", "nats", "nim",
+    "nix_shell", "nodejs", "ocaml", "opa", "openstack", "os", "package",
+    "perl", "php", "pijul_channel", "pulumi", "purescript", "python", "raku",
+    "red", "rlang", "ruby", "rust", "scala", "shell", "shlvl", "singularity",
+    "solidity", "spack", "status", "sudo", "swift", "terraform", "time",
+    "typst", "username", "vagrant", "vcsh", "vlang", "zig"
 ]
+
+# Popular/Common modules to show first
+COMMON_MODULES = [
+    "character", "directory", "git_branch", "git_status", "git_commit",
+    "python", "nodejs", "rust", "golang", "java", "docker_context",
+    "kubernetes", "aws", "gcloud", "time", "cmd_duration", "status",
+    "battery", "memory_usage"
+]
+
+
+def detect_starship_config_path() -> Path:
+    """Detect the Starship config path based on the operating system."""
+    # Check environment variable first
+    if 'STARSHIP_CONFIG' in os.environ:
+        return Path(os.environ['STARSHIP_CONFIG'])
+
+    # Platform-specific defaults
+    if sys.platform == 'win32':
+        # Windows: try multiple locations
+        candidates = [
+            Path.home() / '.config' / 'starship.toml',
+            Path(os.environ.get('APPDATA', '')) / 'starship' / 'starship.toml',
+            Path.home() / 'starship.toml',
+        ]
+    else:
+        # Unix-like systems
+        candidates = [
+            Path.home() / '.config' / 'starship.toml',
+            Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config')) / 'starship.toml',
+        ]
+
+    # Return first existing path, or default to ~/.config/starship.toml
+    for path in candidates:
+        if path and path.exists():
+            return path
+
+    return Path.home() / '.config' / 'starship.toml'
+
+
+# --- Schema Fetcher Thread ---
+
+class SchemaFetcher(QThread):
+    """Background thread to fetch Starship schema without blocking UI."""
+    schema_loaded = pyqtSignal(dict)
+    schema_failed = pyqtSignal(str)
+
+    def run(self):
+        try:
+            import urllib.request
+            with urllib.request.urlopen(SCHEMA_URL, timeout=10) as response:
+                schema = json.loads(response.read().decode())
+                self.schema_loaded.emit(schema)
+        except Exception as e:
+            self.schema_failed.emit(str(e))
+
 
 # --- Main Application Window ---
 
@@ -30,301 +100,868 @@ class StarshipConfigurator(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("🚀 Starship Configurator")
-        self.setGeometry(100, 100, 1000, 700)
-        
-        # Internal configuration storage using tomlkit
-        self.config_data = self._load_initial_config()
+        self.setGeometry(100, 100, 1400, 900)
 
+        # Configuration storage
+        self.config_path = detect_starship_config_path()
+        self.config_data = None
+        self.schema_data = None
+        self.module_widgets = {}  # Store widget references by module
+
+        # Build UI first
         self._build_ui()
-        self._connect_signals()
-        
-    def _load_initial_config(self):
-        """Loads the starship.toml file or creates a default structure."""
-        if CONFIG_PATH.exists():
-            try:
-                with open(CONFIG_PATH, 'r') as f:
-                    doc = tomlkit.load(f)
-                    QMessageBox.information(self, "Load Success", f"Configuration loaded from:\n{CONFIG_PATH}")
-                    return doc
-            except Exception as e:
-                QMessageBox.critical(self, "Load Error", f"Could not load TOML file: {e}")
-                return self._create_default_config()
-        else:
-            QMessageBox.information(self, "New Config", f"No config found at {CONFIG_PATH}. Creating default.")
-            return self._create_default_config()
+        self._create_menu_bar()
+        self._create_toolbar()
+        self._create_status_bar()
+        self._apply_styles()
 
-    def _create_default_config(self):
-        """Creates a basic TOML document with the schema reference."""
+        # Load config after UI is ready
+        self._load_initial_config()
+
+        # Start schema fetch in background
+        self.schema_thread = SchemaFetcher()
+        self.schema_thread.schema_loaded.connect(self._on_schema_loaded)
+        self.schema_thread.schema_failed.connect(self._on_schema_failed)
+        self.schema_thread.start()
+
+    def _build_ui(self):
+        """Sets up the main layout and widgets with improved design."""
+        # Central widget with main splitter
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        main_layout = QVBoxLayout(central_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Create splitter for resizable panels
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        # === LEFT PANEL: Module List ===
+        left_panel = self._create_module_list_panel()
+        splitter.addWidget(left_panel)
+
+        # === RIGHT PANEL: Configuration Area ===
+        right_panel = self._create_config_panel()
+        splitter.addWidget(right_panel)
+
+        # Set initial splitter sizes (30% left, 70% right)
+        splitter.setSizes([400, 1000])
+
+        main_layout.addWidget(splitter)
+
+        # === BOTTOM PANEL: Preview and Actions ===
+        bottom_panel = self._create_bottom_panel()
+        main_layout.addWidget(bottom_panel)
+
+    def _create_module_list_panel(self) -> QWidget:
+        """Create the left sidebar with module list."""
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(5, 5, 5, 5)
+
+        # Search box
+        search_label = QLabel("🔍 Search Modules:")
+        search_label.setStyleSheet("font-weight: bold; padding: 5px;")
+        layout.addWidget(search_label)
+
+        self.module_search = QLineEdit()
+        self.module_search.setPlaceholderText("Type to filter modules...")
+        self.module_search.textChanged.connect(self._filter_modules)
+        layout.addWidget(self.module_search)
+
+        # Module category tabs
+        category_label = QLabel("📦 Module Categories:")
+        category_label.setStyleSheet("font-weight: bold; padding: 5px; margin-top: 10px;")
+        layout.addWidget(category_label)
+
+        self.category_combo = QComboBox()
+        self.category_combo.addItems(["Common Modules", "All Modules", "Active Modules"])
+        self.category_combo.currentTextChanged.connect(self._update_module_list)
+        layout.addWidget(self.category_combo)
+
+        # Module list
+        self.module_list = QListWidget()
+        self.module_list.setAlternatingRowColors(True)
+        layout.addWidget(self.module_list)
+
+        # Current config path display
+        path_label = QLabel(f"📁 Config: {self.config_path.name}")
+        path_label.setStyleSheet("padding: 5px; font-size: 10px; color: #666;")
+        path_label.setWordWrap(True)
+        path_label.setToolTip(str(self.config_path))
+        layout.addWidget(path_label)
+        self.path_label = path_label
+
+        return panel
+
+    def _create_config_panel(self) -> QWidget:
+        """Create the right panel with stacked configuration widgets."""
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(5, 5, 5, 5)
+
+        # Stacked widget for different module configs
+        self.stacked_widget = QStackedWidget()
+        layout.addWidget(self.stacked_widget)
+
+        # Create initial panels
+        self._create_global_settings_panel()
+
+        return panel
+
+    def _create_global_settings_panel(self):
+        """Create the global settings panel with improved layout."""
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        # Title
+        title = QLabel("⚙️ Global Starship Settings")
+        title.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px;")
+        layout.addWidget(title)
+
+        # Global settings group
+        global_group = QGroupBox("General Configuration")
+        global_layout = QGridLayout()
+
+        self.add_newline_check = QCheckBox("Add newline before prompt")
+        self.add_newline_check.setChecked(True)
+        global_layout.addWidget(self.add_newline_check, 0, 0, 1, 2)
+
+        # Scan timeout
+        global_layout.addWidget(QLabel("Scan timeout (ms):"), 1, 0)
+        self.scan_timeout_spin = QSpinBox()
+        self.scan_timeout_spin.setRange(0, 10000)
+        self.scan_timeout_spin.setValue(30)
+        self.scan_timeout_spin.setToolTip("Timeout for scanning files (milliseconds)")
+        global_layout.addWidget(self.scan_timeout_spin, 1, 1)
+
+        # Command timeout
+        global_layout.addWidget(QLabel("Command timeout (ms):"), 2, 0)
+        self.command_timeout_spin = QSpinBox()
+        self.command_timeout_spin.setRange(0, 10000)
+        self.command_timeout_spin.setValue(500)
+        self.command_timeout_spin.setToolTip("Timeout for executing commands (milliseconds)")
+        global_layout.addWidget(self.command_timeout_spin, 2, 1)
+
+        global_group.setLayout(global_layout)
+        layout.addWidget(global_group)
+
+        # Format group
+        format_group = QGroupBox("Prompt Format")
+        format_layout = QVBoxLayout()
+
+        format_layout.addWidget(QLabel("Custom prompt format:"))
+        self.format_edit = QTextEdit()
+        self.format_edit.setPlaceholderText("Leave empty to use default format with enabled modules...")
+        self.format_edit.setMaximumHeight(100)
+        format_layout.addWidget(self.format_edit)
+
+        format_group.setLayout(format_layout)
+        layout.addWidget(format_group)
+
+        # Advanced TOML editor
+        toml_group = QGroupBox("Advanced: Direct TOML Editing")
+        toml_layout = QVBoxLayout()
+
+        self.full_config_editor = QTextEdit()
+        self.full_config_editor.setPlaceholderText("Loading configuration...")
+        self.full_config_editor.setFont(QFont("Courier New", 10))
+        toml_layout.addWidget(self.full_config_editor)
+
+        reload_btn = QPushButton("🔄 Reload from TOML")
+        reload_btn.clicked.connect(self._reload_from_toml_editor)
+        toml_layout.addWidget(reload_btn)
+
+        toml_group.setLayout(toml_layout)
+        layout.addWidget(toml_group)
+
+        scroll.setWidget(panel)
+        self.stacked_widget.addWidget(scroll)
+        self.global_settings_panel = scroll
+
+    def _create_module_panel(self, module_name: str, schema_props: Optional[Dict] = None):
+        """Create a configuration panel for a specific module."""
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        # Title
+        title = QLabel(f"🔧 {module_name.replace('_', ' ').title()} Module")
+        title.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px;")
+        layout.addWidget(title)
+
+        # Enable/Disable
+        enable_check = QCheckBox(f"Enable {module_name} module")
+        enable_check.setChecked(True)
+        enable_check.setStyleSheet("font-weight: bold; padding: 5px;")
+        layout.addWidget(enable_check)
+
+        # Store widgets for this module
+        self.module_widgets[module_name] = {'enabled': enable_check, 'fields': {}}
+
+        # Common fields group
+        common_group = QGroupBox("Common Settings")
+        common_layout = QGridLayout()
+        row = 0
+
+        # Format field
+        common_layout.addWidget(QLabel("Format:"), row, 0)
+        format_input = QLineEdit()
+        format_input.setPlaceholderText("Custom format string...")
+        common_layout.addWidget(format_input, row, 1)
+        self.module_widgets[module_name]['fields']['format'] = format_input
+        row += 1
+
+        # Style field
+        common_layout.addWidget(QLabel("Style:"), row, 0)
+        style_input = QLineEdit()
+        style_input.setPlaceholderText("e.g., 'bold red'")
+        common_layout.addWidget(style_input, row, 1)
+        self.module_widgets[module_name]['fields']['style'] = style_input
+        row += 1
+
+        # Disabled field
+        common_layout.addWidget(QLabel("Disabled:"), row, 0)
+        disabled_check = QCheckBox("Disable this module")
+        common_layout.addWidget(disabled_check, row, 1)
+        self.module_widgets[module_name]['fields']['disabled'] = disabled_check
+        row += 1
+
+        common_group.setLayout(common_layout)
+        layout.addWidget(common_group)
+
+        # Schema-based fields (if schema available)
+        if schema_props:
+            schema_group = QGroupBox("Module-Specific Settings")
+            schema_layout = QGridLayout()
+            schema_row = 0
+
+            # Add fields based on schema
+            for prop_name, prop_schema in schema_props.items():
+                if prop_name in ['format', 'style', 'disabled']:
+                    continue  # Already handled above
+
+                label = QLabel(f"{prop_name.replace('_', ' ').title()}:")
+                schema_layout.addWidget(label, schema_row, 0)
+
+                # Create appropriate widget based on type
+                widget = self._create_widget_for_schema(prop_schema)
+                schema_layout.addWidget(widget, schema_row, 1)
+                self.module_widgets[module_name]['fields'][prop_name] = widget
+                schema_row += 1
+
+                if schema_row > 10:  # Limit fields to avoid overwhelming UI
+                    break
+
+            schema_group.setLayout(schema_layout)
+            layout.addWidget(schema_group)
+
+        # Help text
+        help_label = QLabel(f'💡 <a href="https://starship.rs/config/#{module_name}">View {module_name} documentation</a>')
+        help_label.setOpenExternalLinks(True)
+        help_label.setStyleSheet("padding: 10px; color: #0066cc;")
+        layout.addWidget(help_label)
+
+        scroll.setWidget(panel)
+        self.stacked_widget.addWidget(scroll)
+
+        return scroll
+
+    def _create_widget_for_schema(self, prop_schema: Dict) -> QWidget:
+        """Create appropriate widget based on JSON schema property type."""
+        prop_type = prop_schema.get('type', 'string')
+
+        if prop_type == 'boolean':
+            widget = QCheckBox()
+            if 'default' in prop_schema:
+                widget.setChecked(prop_schema['default'])
+            return widget
+        elif prop_type == 'integer':
+            widget = QSpinBox()
+            widget.setRange(prop_schema.get('minimum', 0), prop_schema.get('maximum', 999999))
+            if 'default' in prop_schema:
+                widget.setValue(prop_schema['default'])
+            return widget
+        elif prop_type == 'array':
+            widget = QTextEdit()
+            widget.setMaximumHeight(60)
+            widget.setPlaceholderText("Enter values, one per line...")
+            return widget
+        else:  # string or unknown
+            widget = QLineEdit()
+            if 'default' in prop_schema:
+                widget.setText(str(prop_schema['default']))
+            if 'description' in prop_schema:
+                widget.setPlaceholderText(prop_schema['description'][:50] + "...")
+            return widget
+
+    def _create_bottom_panel(self) -> QWidget:
+        """Create bottom panel with preview and action buttons."""
+        panel = QWidget()
+        panel.setMaximumHeight(200)
+        layout = QVBoxLayout(panel)
+
+        # Preview area
+        preview_label = QLabel("✨ Prompt Preview:")
+        preview_label.setStyleSheet("font-weight: bold; padding: 5px;")
+        layout.addWidget(preview_label)
+
+        self.preview_text = QTextEdit()
+        self.preview_text.setReadOnly(True)
+        self.preview_text.setPlaceholderText("Click 'Generate Preview' to see your prompt...")
+        self.preview_text.setMaximumHeight(80)
+        self.preview_text.setFont(QFont("Courier New", 10))
+        layout.addWidget(self.preview_text)
+
+        # Action buttons
+        button_layout = QHBoxLayout()
+
+        self.preview_button = QPushButton("✨ Generate Preview")
+        self.preview_button.setToolTip("Preview your prompt configuration")
+        self.preview_button.clicked.connect(self._generate_preview)
+        button_layout.addWidget(self.preview_button)
+
+        self.save_button = QPushButton("💾 Save Configuration")
+        self.save_button.setToolTip("Save to starship.toml")
+        self.save_button.clicked.connect(self._save_config)
+        button_layout.addWidget(self.save_button)
+
+        self.export_button = QPushButton("📤 Export As...")
+        self.export_button.setToolTip("Export configuration to a different file")
+        self.export_button.clicked.connect(self._export_config)
+        button_layout.addWidget(self.export_button)
+
+        layout.addLayout(button_layout)
+
+        return panel
+
+    def _create_menu_bar(self):
+        """Create application menu bar."""
+        menubar = self.menuBar()
+
+        # File menu
+        file_menu = menubar.addMenu("&File")
+
+        load_action = QAction("📂 Load Configuration...", self)
+        load_action.setShortcut("Ctrl+O")
+        load_action.triggered.connect(self._load_config_from_file)
+        file_menu.addAction(load_action)
+
+        save_action = QAction("💾 Save Configuration", self)
+        save_action.setShortcut("Ctrl+S")
+        save_action.triggered.connect(self._save_config)
+        file_menu.addAction(save_action)
+
+        file_menu.addSeparator()
+
+        exit_action = QAction("❌ Exit", self)
+        exit_action.setShortcut("Ctrl+Q")
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+
+        # Edit menu
+        edit_menu = menubar.addMenu("&Edit")
+
+        reload_action = QAction("🔄 Reload from Disk", self)
+        reload_action.setShortcut("F5")
+        reload_action.triggered.connect(self._reload_config)
+        edit_menu.addAction(reload_action)
+
+        # Help menu
+        help_menu = menubar.addMenu("&Help")
+
+        docs_action = QAction("📚 Starship Documentation", self)
+        docs_action.triggered.connect(lambda: self._open_url("https://starship.rs/config/"))
+        help_menu.addAction(docs_action)
+
+        about_action = QAction("ℹ️ About", self)
+        about_action.triggered.connect(self._show_about)
+        help_menu.addAction(about_action)
+
+    def _create_toolbar(self):
+        """Create application toolbar."""
+        toolbar = QToolBar()
+        toolbar.setMovable(False)
+        self.addToolBar(toolbar)
+
+        # Quick actions
+        toolbar.addAction("💾 Save", self._save_config)
+        toolbar.addAction("📂 Load", self._load_config_from_file)
+        toolbar.addSeparator()
+        toolbar.addAction("✨ Preview", self._generate_preview)
+        toolbar.addSeparator()
+        toolbar.addAction("🔄 Reload", self._reload_config)
+
+    def _create_status_bar(self):
+        """Create status bar."""
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self.status_bar.showMessage(f"Ready - Config: {self.config_path}")
+
+    def _apply_styles(self):
+        """Apply modern stylesheet to the application."""
+        self.setStyleSheet("""
+            QMainWindow {
+                background-color: #f5f5f5;
+            }
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #cccccc;
+                border-radius: 5px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+            }
+            QPushButton {
+                background-color: #0078d4;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #106ebe;
+            }
+            QPushButton:pressed {
+                background-color: #005a9e;
+            }
+            QLineEdit, QTextEdit, QSpinBox {
+                border: 1px solid #cccccc;
+                border-radius: 3px;
+                padding: 5px;
+                background-color: white;
+            }
+            QLineEdit:focus, QTextEdit:focus, QSpinBox:focus {
+                border: 2px solid #0078d4;
+            }
+            QListWidget {
+                border: 1px solid #cccccc;
+                border-radius: 3px;
+                background-color: white;
+            }
+            QListWidget::item:selected {
+                background-color: #0078d4;
+                color: white;
+            }
+            QListWidget::item:hover {
+                background-color: #e5f3ff;
+            }
+            QCheckBox {
+                spacing: 5px;
+            }
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+            }
+            QComboBox {
+                border: 1px solid #cccccc;
+                border-radius: 3px;
+                padding: 5px;
+                background-color: white;
+            }
+        """)
+
+    # === Configuration Management ===
+
+    def _load_initial_config(self):
+        """Load the starship.toml file or create a default structure."""
+        if self.config_path.exists():
+            try:
+                with open(self.config_path, 'r', encoding='utf-8') as f:
+                    self.config_data = tomlkit.load(f)
+                self.status_bar.showMessage(f"✅ Loaded: {self.config_path}", 5000)
+                self._populate_ui_from_config()
+            except Exception as e:
+                QMessageBox.critical(self, "Load Error", f"Could not load config:\n{e}")
+                self.config_data = self._create_default_config()
+        else:
+            response = QMessageBox.question(
+                self,
+                "No Config Found",
+                f"No Starship configuration found at:\n{self.config_path}\n\nCreate a new one?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if response == QMessageBox.StandardButton.Yes:
+                self.config_data = self._create_default_config()
+            else:
+                self.config_data = tomlkit.document()
+
+        self._update_full_editor()
+        self._update_module_list()
+
+    def _create_default_config(self) -> tomlkit.TOMLDocument:
+        """Create a basic default configuration."""
         doc = tomlkit.document()
-        # Add the official JSON Schema for editor support
-        doc.add('$', tomlkit.string(SCHEMA_URL))
+        doc.add(tomlkit.comment("Starship Configuration"))
+        doc.add(tomlkit.comment(f"Generated by Starship Configurator"))
+        doc.add(tomlkit.nl())
+
         doc['add_newline'] = True
-        
-        # Add basic character module
-        doc.add(tomlkit.comment("Configuration for the prompt symbol"))
+        doc['scan_timeout'] = 30
+        doc['command_timeout'] = 500
+
+        # Add a basic character module
         char_table = tomlkit.table()
         char_table['success_symbol'] = "[❯](bold green)"
         char_table['error_symbol'] = "[❯](bold red)"
         doc['character'] = char_table
-        
+
         return doc
 
-    # --- UI Building Methods ---
-    
-    def _build_ui(self):
-        """Sets up the main layout and widgets."""
-        main_widget = QWidget()
-        self.setCentralWidget(main_widget)
-        main_layout = QHBoxLayout(main_widget)
+    def _populate_ui_from_config(self):
+        """Populate UI widgets from loaded configuration."""
+        if not self.config_data:
+            return
 
-        # 1. Sidebar (Module List)
-        self.module_list = QListWidget()
-        self.module_list.setFixedWidth(180)
-        self.module_list.addItems(["-- Global Settings --"] + STARSHIP_MODULES)
-        main_layout.addWidget(self.module_list)
-
-        # 2. Stacked Widget (Config Panels)
-        self.stacked_widget = QStackedWidget()
-        main_layout.addWidget(self.stacked_widget)
-        
-        # Create config panels for each module
-        self.config_panels = {}
-        self._create_global_settings_panel()
-        for module_name in STARSHIP_MODULES:
-            self._create_module_panel(module_name)
-            
-        self._create_bottom_bar()
-
-    def _create_global_settings_panel(self):
-        """Panel for global settings like schema, newline, and all prompts."""
-        panel = QWidget()
-        layout = QGridLayout(panel)
-        
-        # Add Newline
-        self.add_newline_check = QCheckBox("Add Newline before prompt")
+        # Global settings
         self.add_newline_check.setChecked(self.config_data.get('add_newline', True))
-        layout.addWidget(self.add_newline_check, 0, 0, 1, 2)
-        
-        # Full TOML Editor (Fallback/Advanced)
-        layout.addWidget(QLabel("Advanced: Full TOML Configuration"), 2, 0, 1, 2)
-        self.full_config_editor = QTextEdit()
-        self.full_config_editor.setPlainText(self.config_data.as_string())
-        layout.addWidget(self.full_config_editor, 3, 0, 1, 2)
+        self.scan_timeout_spin.setValue(self.config_data.get('scan_timeout', 30))
+        self.command_timeout_spin.setValue(self.config_data.get('command_timeout', 500))
+        self.format_edit.setPlainText(self.config_data.get('format', ''))
 
-        self.stacked_widget.addWidget(panel)
-        self.config_panels["-- Global Settings --"] = panel
-        
-    def _create_module_panel(self, name):
-        """Creates a generic configuration panel for a Starship module."""
-        panel = QWidget()
-        layout = QGridLayout(panel)
-        row = 0
+        # Module settings will be loaded when panels are created
+        self._update_full_editor()
 
-        # Checkbox to disable module
-        check_box = QCheckBox(f"Enable [{name}] Module")
-        check_box.setChecked(name in self.config_data and self.config_data[name].get('disabled', False) is not True)
-        layout.addWidget(check_box, row, 0, 1, 2)
-        setattr(self, f"{name}_check", check_box)
-        row += 1
+    def _update_full_editor(self):
+        """Update the full TOML editor with current config."""
+        if self.config_data:
+            self.full_config_editor.setPlainText(self.config_data.as_string())
 
-        # Format field (most important)
-        layout.addWidget(QLabel(f"Format String ({name}):"), row, 0)
-        format_input = QLineEdit()
-        if name in self.config_data:
-            format_input.setText(self.config_data[name].get('format', ''))
-        layout.addWidget(format_input, row, 1)
-        setattr(self, f"{name}_format", format_input)
-        row += 1
-        
-        # Style field
-        layout.addWidget(QLabel(f"Style String ({name}):"), row, 0)
-        style_input = QLineEdit()
-        if name in self.config_data:
-            style_input.setText(self.config_data[name].get('style', ''))
-        layout.addWidget(style_input, row, 1)
-        setattr(self, f"{name}_style", style_input)
-        row += 1
+    def _update_module_list(self):
+        """Update the module list based on category and search."""
+        self.module_list.clear()
 
-        # Symbol field (if applicable)
-        if name in ["character", "git_branch", "python", "node"]:
-            layout.addWidget(QLabel(f"Symbol ({name}):"), row, 0)
-            symbol_input = QLineEdit()
-            if name in self.config_data:
-                symbol_input.setText(self.config_data[name].get('symbol', ''))
-            layout.addWidget(symbol_input, row, 1)
-            setattr(self, f"{name}_symbol", symbol_input)
-            row += 1
+        # Add global settings
+        global_item = QListWidgetItem("⚙️ Global Settings")
+        self.module_list.addItem(global_item)
 
-        layout.setRowStretch(row, 1) # Push content to top
+        # Determine which modules to show
+        category = self.category_combo.currentText()
+        search_text = self.module_search.text().lower()
 
-        self.stacked_widget.addWidget(panel)
-        self.config_panels[name] = panel
-        
-    def _create_bottom_bar(self):
-        """Creates buttons for save, load, and preview."""
-        bottom_bar = QWidget()
-        h_layout = QHBoxLayout(bottom_bar)
-        
-        self.preview_text = QTextEdit()
-        self.preview_text.setPlaceholderText("Starship Preview will appear here (may not show full colors).")
-        self.preview_text.setReadOnly(True)
-        self.preview_text.setFixedHeight(60)
+        if category == "Common Modules":
+            modules = COMMON_MODULES
+        elif category == "Active Modules":
+            modules = [m for m in STARSHIP_MODULES if m in self.config_data] if self.config_data else []
+        else:  # All Modules
+            modules = sorted(STARSHIP_MODULES)
 
-        self.save_button = QPushButton("💾 Save Config")
-        self.load_button = QPushButton("📂 Load from File")
-        self.preview_button = QPushButton("✨ Generate Preview")
-        
-        h_layout.addWidget(self.preview_text)
-        h_layout.addWidget(self.load_button)
-        h_layout.addWidget(self.preview_button)
-        h_layout.addWidget(self.save_button)
+        # Filter by search
+        if search_text:
+            modules = [m for m in modules if search_text in m.lower()]
 
-        main_layout = self.centralWidget().layout()
-        main_layout.addWidget(bottom_bar)
+        # Add modules to list
+        for module in modules:
+            icon = "✅" if (self.config_data and module in self.config_data) else "📦"
+            item = QListWidgetItem(f"{icon} {module}")
+            item.setData(Qt.ItemDataRole.UserRole, module)
+            self.module_list.addItem(item)
 
-    # --- Signal Connections ---
-    
-    def _connect_signals(self):
-        self.module_list.currentRowChanged.connect(self.stacked_widget.setCurrentIndex)
-        self.save_button.clicked.connect(self._save_config)
-        self.load_button.clicked.connect(self._load_config_from_file)
-        self.preview_button.clicked.connect(self._generate_preview)
-        
-    # --- Data Handling Methods ---
+        # Connect selection signal
+        self.module_list.currentRowChanged.connect(self._on_module_selected)
+
+    def _filter_modules(self, text: str):
+        """Filter module list based on search text."""
+        self._update_module_list()
+
+    def _on_module_selected(self, row: int):
+        """Handle module selection from list."""
+        if row == 0:  # Global settings
+            self.stacked_widget.setCurrentWidget(self.global_settings_panel)
+        else:
+            item = self.module_list.item(row)
+            if item:
+                module_name = item.data(Qt.ItemDataRole.UserRole)
+                if module_name:
+                    self._show_module_panel(module_name)
+
+    def _show_module_panel(self, module_name: str):
+        """Show or create panel for the given module."""
+        # Check if panel already exists
+        if module_name not in self.module_widgets:
+            # Get schema for this module if available
+            schema_props = None
+            if self.schema_data and 'properties' in self.schema_data:
+                schema_props = self.schema_data['properties'].get(module_name, {}).get('properties', {})
+
+            panel = self._create_module_panel(module_name, schema_props)
+
+            # Load existing config for this module
+            if self.config_data and module_name in self.config_data:
+                self._load_module_config(module_name)
+
+        # Find and show the panel
+        for i in range(self.stacked_widget.count()):
+            widget = self.stacked_widget.widget(i)
+            # Match by finding the module name in widgets
+            if module_name in self.module_widgets:
+                # Get the index based on module creation order
+                # This is a simplified approach; you might want to store panel indices
+                self.stacked_widget.setCurrentIndex(i)
+                break
+
+    def _load_module_config(self, module_name: str):
+        """Load configuration values for a specific module into its widgets."""
+        if not self.config_data or module_name not in self.config_data:
+            return
+
+        module_config = self.config_data[module_name]
+        widgets = self.module_widgets.get(module_name, {})
+
+        if 'fields' in widgets:
+            for field_name, widget in widgets['fields'].items():
+                if field_name in module_config:
+                    value = module_config[field_name]
+
+                    if isinstance(widget, QCheckBox):
+                        widget.setChecked(bool(value))
+                    elif isinstance(widget, QLineEdit):
+                        widget.setText(str(value))
+                    elif isinstance(widget, QSpinBox):
+                        widget.setValue(int(value))
+                    elif isinstance(widget, QTextEdit):
+                        if isinstance(value, list):
+                            widget.setPlainText('\n'.join(str(v) for v in value))
+                        else:
+                            widget.setPlainText(str(value))
 
     def _update_config_from_gui(self):
-        """Reads data from all GUI elements and updates the internal TOML document."""
-        
-        # 1. Update Global Settings
+        """Update config_data from all GUI widgets."""
+        # Global settings
         self.config_data['add_newline'] = self.add_newline_check.isChecked()
-        
-        # 2. Update Modules
-        for name in STARSHIP_MODULES:
-            is_enabled = getattr(self, f"{name}_check").isChecked()
-            format_text = getattr(self, f"{name}_format").text().strip()
-            style_text = getattr(self, f"{name}_style").text().strip()
-            
-            # Use tomlkit to manage table existence
-            if name not in self.config_data and (is_enabled or format_text or style_text):
-                 self.config_data[name] = tomlkit.table()
-                 
-            if name in self.config_data:
-                module_table = self.config_data[name]
-                
-                # Update enablement
-                if not is_enabled:
-                    module_table['disabled'] = True
-                elif 'disabled' in module_table:
-                    del module_table['disabled']
+        self.config_data['scan_timeout'] = self.scan_timeout_spin.value()
+        self.config_data['command_timeout'] = self.command_timeout_spin.value()
 
-                # Update main properties
-                if format_text:
-                    module_table['format'] = format_text
-                elif 'format' in module_table:
-                    del module_table['format']
-                    
-                if style_text:
-                    module_table['style'] = style_text
-                elif 'style' in module_table:
-                    del module_table['style']
-                    
-                # Update symbol (if widget exists)
-                if hasattr(self, f"{name}_symbol"):
-                    symbol_text = getattr(self, f"{name}_symbol").text().strip()
-                    if symbol_text:
-                        module_table['symbol'] = symbol_text
-                    elif 'symbol' in module_table:
-                        del module_table['symbol']
-                        
-                # Remove module table if it's empty after updates
-                if not module_table and name != 'character':
-                    del self.config_data[name]
+        format_text = self.format_edit.toPlainText().strip()
+        if format_text:
+            self.config_data['format'] = format_text
+        elif 'format' in self.config_data:
+            del self.config_data['format']
 
-        # 3. Advanced Editor Sync (Write from GUI to editor for display)
-        self.full_config_editor.setPlainText(self.config_data.as_string())
+        # Module settings
+        for module_name, widget_dict in self.module_widgets.items():
+            if not widget_dict.get('enabled', QCheckBox()).isChecked():
+                # Module is disabled, skip or mark as disabled
+                if module_name in self.config_data:
+                    self.config_data[module_name]['disabled'] = True
+                continue
 
+            # Create module table if not exists
+            if module_name not in self.config_data:
+                self.config_data[module_name] = tomlkit.table()
+
+            module_table = self.config_data[module_name]
+
+            # Update fields
+            for field_name, widget in widget_dict.get('fields', {}).items():
+                value = None
+
+                if isinstance(widget, QCheckBox):
+                    value = widget.isChecked()
+                    if not value and field_name != 'disabled':
+                        continue  # Don't save unchecked non-disabled checkboxes
+                elif isinstance(widget, QLineEdit):
+                    value = widget.text().strip()
+                elif isinstance(widget, QSpinBox):
+                    value = widget.value()
+                elif isinstance(widget, QTextEdit):
+                    text = widget.toPlainText().strip()
+                    if text:
+                        value = text.split('\n')
+
+                if value:
+                    module_table[field_name] = value
+                elif field_name in module_table:
+                    del module_table[field_name]
+
+        self._update_full_editor()
+
+    # === Actions ===
 
     def _save_config(self):
-        """Saves the current configuration to starship.toml."""
-        self._update_config_from_gui()
-        
+        """Save configuration to starship.toml."""
         try:
-            # Final check: prioritize full editor content if the tab is active
-            if self.module_list.currentRow() == 0:
-                final_output = self.full_config_editor.toPlainText()
-            else:
-                final_output = self.config_data.as_string()
-                
-            # Ensure the directory exists
-            CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-            
-            with open(CONFIG_PATH, 'w') as f:
-                f.write(final_output)
-            
-            QMessageBox.information(self, "Save Success", f"Configuration successfully saved to:\n{CONFIG_PATH}\n\nRestart your terminal to see changes!")
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Save Error", f"Failed to save file: {e}")
+            self._update_config_from_gui()
 
-    def _load_config_from_file(self):
-        """Opens a file dialog to load an existing TOML file."""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Load Starship Config", str(CONFIG_PATH.parent), "TOML Files (*.toml);;All Files (*)"
-        )
-        if file_path:
-            try:
-                with open(file_path, 'r') as f:
-                    new_data = tomlkit.load(f)
-                    self.config_data = new_data
-                    QMessageBox.information(self, "Load Success", f"Loaded new configuration from:\n{file_path}")
-                    # Rebuild the UI elements with new data
-                    self.close()
-                    self.__init__()
-                    self.show()
-            except Exception as e:
-                QMessageBox.critical(self, "Load Error", f"Could not load TOML file: {e}")
+            # Ensure directory exists
+            self.config_path.parent.mkdir(parents=True, exist_ok=True)
 
-    def _generate_preview(self):
-        """Executes 'starship print' with a temporary config for preview."""
-        self._update_config_from_gui()
-        temp_config_path = Path("/tmp/starship_temp.toml") # Use /tmp for cross-platform
-        
-        try:
-            # 1. Write current config to a temporary file
-            with open(temp_config_path, 'w') as f:
+            with open(self.config_path, 'w', encoding='utf-8') as f:
                 f.write(self.config_data.as_string())
 
-            # 2. Execute starship print command
-            # Note: This requires 'starship' to be in the system PATH
-            process = subprocess.run(
-                ['starship', 'print', '--config', str(temp_config_path)],
-                capture_output=True,
-                text=True,
-                check=True,
-                encoding='utf-8'
+            QMessageBox.information(
+                self,
+                "✅ Save Successful",
+                f"Configuration saved to:\n{self.config_path}\n\n"
+                "Restart your terminal to see changes!"
             )
-            
-            # 3. Display the raw output (will contain ANSI codes)
-            self.preview_text.setPlainText(process.stdout.strip())
-            
-        except FileNotFoundError:
-            self.preview_text.setPlainText("ERROR: 'starship' command not found. Please ensure Starship is installed and in your system PATH.")
-        except subprocess.CalledProcessError as e:
-            self.preview_text.setPlainText(f"ERROR executing starship:\n{e.stderr}")
+            self.status_bar.showMessage(f"✅ Saved: {self.config_path}", 5000)
+
         except Exception as e:
-            self.preview_text.setPlainText(f"An unexpected error occurred: {e}")
-        finally:
-            if temp_config_path.exists():
-                os.remove(temp_config_path)
+            QMessageBox.critical(self, "❌ Save Error", f"Failed to save:\n{e}")
+
+    def _export_config(self):
+        """Export configuration to a custom file."""
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Configuration",
+            str(Path.home() / "starship.toml"),
+            "TOML Files (*.toml);;All Files (*)"
+        )
+
+        if file_path:
+            try:
+                self._update_config_from_gui()
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(self.config_data.as_string())
+                QMessageBox.information(self, "✅ Export Successful", f"Exported to:\n{file_path}")
+            except Exception as e:
+                QMessageBox.critical(self, "❌ Export Error", f"Failed to export:\n{e}")
+
+    def _load_config_from_file(self):
+        """Load configuration from a file."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load Configuration",
+            str(self.config_path.parent),
+            "TOML Files (*.toml);;All Files (*)"
+        )
+
+        if file_path:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    self.config_data = tomlkit.load(f)
+
+                self._populate_ui_from_config()
+                self._update_module_list()
+
+                QMessageBox.information(self, "✅ Load Successful", f"Loaded from:\n{file_path}")
+                self.status_bar.showMessage(f"✅ Loaded: {file_path}", 5000)
+
+            except Exception as e:
+                QMessageBox.critical(self, "❌ Load Error", f"Failed to load:\n{e}")
+
+    def _reload_config(self):
+        """Reload configuration from disk."""
+        self._load_initial_config()
+        QMessageBox.information(self, "🔄 Reloaded", "Configuration reloaded from disk.")
+
+    def _reload_from_toml_editor(self):
+        """Reload config from the TOML editor text."""
+        try:
+            toml_text = self.full_config_editor.toPlainText()
+            self.config_data = tomlkit.loads(toml_text)
+            self._populate_ui_from_config()
+            self._update_module_list()
+            QMessageBox.information(self, "✅ Reloaded", "Configuration reloaded from TOML editor.")
+        except Exception as e:
+            QMessageBox.critical(self, "❌ Parse Error", f"Invalid TOML:\n{e}")
+
+    def _generate_preview(self):
+        """Generate preview using starship print command."""
+        try:
+            self._update_config_from_gui()
+
+            # Create temporary config file
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False, encoding='utf-8') as f:
+                temp_path = f.name
+                f.write(self.config_data.as_string())
+
+            try:
+                # Execute starship print
+                result = subprocess.run(
+                    ['starship', 'print', '--config', temp_path],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    encoding='utf-8'
+                )
+
+                if result.returncode == 0:
+                    self.preview_text.setPlainText(result.stdout.strip())
+                    self.status_bar.showMessage("✨ Preview generated", 3000)
+                else:
+                    self.preview_text.setPlainText(f"❌ Error:\n{result.stderr}")
+
+            finally:
+                # Clean up temp file
+                try:
+                    os.unlink(temp_path)
+                except:
+                    pass
+
+        except FileNotFoundError:
+            self.preview_text.setPlainText(
+                "❌ ERROR: 'starship' command not found.\n\n"
+                "Please install Starship:\n"
+                "https://starship.rs/guide/#-installation"
+            )
+        except subprocess.TimeoutExpired:
+            self.preview_text.setPlainText("❌ Preview timed out")
+        except Exception as e:
+            self.preview_text.setPlainText(f"❌ Error: {e}")
+
+    # === Schema Handling ===
+
+    def _on_schema_loaded(self, schema: Dict):
+        """Handle successful schema loading."""
+        self.schema_data = schema
+        self.status_bar.showMessage("✅ Schema loaded - enhanced fields available", 5000)
+
+    def _on_schema_failed(self, error: str):
+        """Handle schema loading failure."""
+        self.status_bar.showMessage(f"⚠️ Schema unavailable: {error}", 5000)
+
+    # === Utility Methods ===
+
+    def _open_url(self, url: str):
+        """Open URL in default browser."""
+        import webbrowser
+        webbrowser.open(url)
+
+    def _show_about(self):
+        """Show about dialog."""
+        QMessageBox.about(
+            self,
+            "About Starship Configurator",
+            "<h2>🚀 Starship Configurator</h2>"
+            "<p>A modern GUI for configuring Starship prompt</p>"
+            "<p>Version: 2.0</p>"
+            "<p><a href='https://starship.rs'>Starship Homepage</a></p>"
+            "<p><a href='https://github.com'>GitHub Repository</a></p>"
+        )
 
 
-# --- Application Entry Point ---
+# === Application Entry Point ===
 
-if __name__ == '__main__':
-    # Ensure a proper system font is used for symbols if not a Nerd Font
-    # The user must still configure a Nerd Font in their terminal/Windows Terminal for the final output.
-    
+def main():
+    """Main application entry point."""
     app = QApplication(sys.argv)
+    app.setApplicationName("Starship Configurator")
+    app.setOrganizationName("Starship")
+
+    # Set application-wide font
+    font = QFont("Segoe UI", 9)
+    app.setFont(font)
+
     window = StarshipConfigurator()
     window.show()
+
     sys.exit(app.exec())
+
+
+if __name__ == '__main__':
+    main()
