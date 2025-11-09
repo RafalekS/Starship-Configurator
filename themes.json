@@ -66,7 +66,14 @@
     "red": "#FD5FF1",
     "selection": "#444444",
     "white": "#E0E0E0",
-    "yellow": "#FFD7B1"
+    "yellow": "#FFD7B1",
+    "fontFamily": "Sans Serif",
+    "fontSize": "9pt",
+    "codeFontFamily": "Monospace",
+    "codeFontSize": "10pt",
+    "labelFontSize": "9pt",
+    "buttonFontSize": "9pt",
+    "inputFontSize": "9pt"
   },
   "Aurelia": {
     "name": "Aurelia",

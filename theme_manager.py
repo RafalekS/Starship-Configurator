@@ -92,6 +92,15 @@ class ThemeManager:
         border = theme.get('brightBlack', '#666666')
         disabled = theme.get('brightBlack', '#888888')
 
+        # Font settings
+        font_family = theme.get('fontFamily', 'Sans Serif')
+        font_size = theme.get('fontSize', '9pt')
+        code_font_family = theme.get('codeFontFamily', 'Monospace')
+        code_font_size = theme.get('codeFontSize', '10pt')
+        label_font_size = theme.get('labelFontSize', '9pt')
+        button_font_size = theme.get('buttonFontSize', '9pt')
+        input_font_size = theme.get('inputFontSize', '9pt')
+
         # Generate comprehensive stylesheet
         stylesheet = f"""
 /* Main Window */
@@ -115,6 +124,8 @@ QGroupBox {{
     margin-top: 10px;
     padding-top: 10px;
     font-weight: bold;
+    font-family: {font_family};
+    font-size: {font_size};
 }}
 
 QGroupBox::title {{
@@ -128,6 +139,8 @@ QGroupBox::title {{
 QLabel {{
     color: {fg};
     background-color: transparent;
+    font-family: {font_family};
+    font-size: {label_font_size};
 }}
 
 /* Line Edit (Text Input) */
@@ -138,6 +151,8 @@ QLineEdit {{
     border-radius: 3px;
     padding: 5px;
     selection-background-color: {selection};
+    font-family: {font_family};
+    font-size: {input_font_size};
 }}
 
 QLineEdit:focus {{
@@ -157,6 +172,8 @@ QPushButton {{
     border-radius: 4px;
     padding: 6px 12px;
     font-weight: bold;
+    font-family: {font_family};
+    font-size: {button_font_size};
 }}
 
 QPushButton:hover {{
@@ -180,6 +197,8 @@ QSpinBox {{
     border-radius: 3px;
     padding: 5px;
     selection-background-color: {selection};
+    font-family: {font_family};
+    font-size: {input_font_size};
 }}
 
 QSpinBox:focus {{
@@ -228,6 +247,8 @@ QSpinBox::down-arrow {{
 QCheckBox {{
     color: {fg};
     spacing: 5px;
+    font-family: {font_family};
+    font-size: {input_font_size};
 }}
 
 QCheckBox::indicator {{
@@ -287,6 +308,8 @@ QComboBox {{
     border: 1px solid {border};
     border-radius: 3px;
     padding: 5px;
+    font-family: {font_family};
+    font-size: {input_font_size};
 }}
 
 QComboBox:hover {{
@@ -320,6 +343,8 @@ QListWidget {{
     border: 2px dashed {accent};
     border-radius: 5px;
     padding: 5px;
+    font-family: {font_family};
+    font-size: {input_font_size};
 }}
 
 QListWidget::item {{
@@ -342,6 +367,8 @@ QTextEdit {{
     border: 1px solid {border};
     border-radius: 3px;
     padding: 5px;
+    font-family: {code_font_family};
+    font-size: {code_font_size};
 }}
 
 QTextEdit:read-only {{
@@ -413,6 +440,8 @@ QStatusBar {{
     background-color: {bg};
     color: {fg};
     border-top: 1px solid {border};
+    font-family: {font_family};
+    font-size: {font_size};
 }}
 
 /* Menu Bar */
@@ -420,6 +449,8 @@ QMenuBar {{
     background-color: {bg};
     color: {fg};
     border-bottom: 1px solid {border};
+    font-family: {font_family};
+    font-size: {font_size};
 }}
 
 QMenuBar::item {{
@@ -435,6 +466,8 @@ QMenu {{
     background-color: {theme.get('black', '#1E1E1E')};
     color: {fg};
     border: 1px solid {border};
+    font-family: {font_family};
+    font-size: {font_size};
 }}
 
 QMenu::item {{
@@ -471,6 +504,8 @@ QTabBar::tab {{
     border: 1px solid {border};
     padding: 8px 16px;
     margin-right: 2px;
+    font-family: {font_family};
+    font-size: {font_size};
 }}
 
 QTabBar::tab:selected {{
@@ -501,6 +536,8 @@ QToolButton {{
     border: 1px solid transparent;
     border-radius: 3px;
     padding: 5px 8px;
+    font-family: {font_family};
+    font-size: {font_size};
 }}
 
 QToolButton:hover {{
