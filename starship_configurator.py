@@ -126,13 +126,31 @@ class StarshipConfigurator(QMainWindow):
         self._create_toolbar()
         self._create_status_bar()
 
-        # Load preferences and apply saved theme
+        # Load preferences and apply saved settings
         prefs = self._load_preferences()
         saved_theme = prefs.get('theme', 'Atom')
+        saved_font_size = prefs.get('font_size', 9)
+        saved_code_font_size = prefs.get('code_font_size', 10)
+
         self._apply_selected_theme(saved_theme)
 
-        # Set theme combo to saved value
+        # Set UI values to saved preferences (block signals to avoid duplicate saves)
+        self.theme_combo.blockSignals(True)
+        self.font_size_spin.blockSignals(True)
+        self.code_font_size_spin.blockSignals(True)
+
         self.theme_combo.setCurrentText(saved_theme)
+        self.font_size_spin.setValue(saved_font_size)
+        self.code_font_size_spin.setValue(saved_code_font_size)
+
+        self.theme_combo.blockSignals(False)
+        self.font_size_spin.blockSignals(False)
+        self.code_font_size_spin.blockSignals(False)
+
+        # Apply saved font sizes without saving again
+        font = QFont("Sans Serif", saved_font_size)
+        QApplication.instance().setFont(font)
+        self.full_config_editor.setFont(QFont("Monospace", saved_code_font_size))
 
         # Load config after UI is ready
         self._load_initial_config()
@@ -1090,10 +1108,20 @@ class StarshipConfigurator(QMainWindow):
         QApplication.instance().setFont(font)
         self.status_bar.showMessage(f"Interface font size: {size}pt", 2000)
 
+        # Save font size preference
+        prefs = self._load_preferences()
+        prefs['font_size'] = size
+        self._save_preferences(prefs)
+
     def _update_code_font_size(self, size: int):
         """Update the code editor font size."""
         self.full_config_editor.setFont(QFont("Monospace", size))
         self.status_bar.showMessage(f"Code editor font size: {size}pt", 2000)
+
+        # Save code font size preference
+        prefs = self._load_preferences()
+        prefs['code_font_size'] = size
+        self._save_preferences(prefs)
 
     def _apply_selected_theme(self, theme_name: str):
         """Apply the selected theme from theme manager."""
