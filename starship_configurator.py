@@ -328,7 +328,7 @@ class StarshipConfigurator(QMainWindow):
         self.preview_text = QTextEdit()
         self.preview_text.setReadOnly(True)
         self.preview_text.setPlaceholderText("Click 'Generate Preview' to see your configuration...")
-        self.preview_text.setFont(QFont("Courier New", 10))
+        self.preview_text.setFont(QFont("Monospace", 10))
         layout.addWidget(self.preview_text)
 
         # Action buttons
@@ -366,7 +366,7 @@ class StarshipConfigurator(QMainWindow):
         # TOML editor
         self.full_config_editor = QTextEdit()
         self.full_config_editor.setPlaceholderText("Loading configuration...")
-        self.full_config_editor.setFont(QFont("Courier New", 10))
+        self.full_config_editor.setFont(QFont("Monospace", 10))
         layout.addWidget(self.full_config_editor)
 
         # Buttons
@@ -429,7 +429,7 @@ class StarshipConfigurator(QMainWindow):
         example_text = self._get_module_example(module_name)
         example_label = QLabel(example_text)
         example_label.setWordWrap(True)
-        example_label.setStyleSheet("padding: 5px; font-family: 'Courier New';")
+        example_label.setStyleSheet("padding: 5px; font-family: 'Monospace';")
         example_layout.addWidget(example_label)
         example_group.setLayout(example_layout)
         layout.addWidget(example_group)
@@ -732,10 +732,6 @@ class StarshipConfigurator(QMainWindow):
             QCheckBox::indicator:checked {
                 background-color: #0078d4;
                 border: 2px solid #0078d4;
-                image: url(none);
-            }
-            QCheckBox::indicator:checked:after {
-                content: "✓";
             }
             QListWidget::indicator {
                 width: 18px;
@@ -1431,7 +1427,7 @@ def main():
     app.setOrganizationName("Starship")
 
     # Set application-wide font
-    font = QFont("Segoe UI", 9)
+    font = QFont("Sans Serif", 9)
     app.setFont(font)
 
     window = StarshipConfigurator()
