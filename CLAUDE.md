@@ -202,6 +202,26 @@ starship_configurator.py (968 lines)
 6. **Cross-platform paths**: Uses `Path()` and `tempfile` for OS compatibility
 7. **UTF-8 encoding**: All file operations use explicit UTF-8 encoding
 
+## Critical Import Requirements
+
+**IMPORTANT: PyQt6 Widget Imports**
+
+The application uses a **tabbed interface** (`QTabWidget`). When modifying the UI code, ensure these imports are present:
+
+```python
+from PyQt6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QListWidget, QStackedWidget, QLineEdit, QCheckBox, QPushButton,
+    QTextEdit, QLabel, QFileDialog, QMessageBox, QGridLayout,
+    QScrollArea, QGroupBox, QComboBox, QSpinBox, QListWidgetItem,
+    QToolBar, QStatusBar, QSplitter, QTabWidget  # ← MUST INCLUDE QTabWidget!
+)
+```
+
+**Common Error**: Forgetting `QTabWidget` will cause `NameError: name 'QTabWidget' is not defined`
+
+This is the main UI container for the 4-tab layout (Modules, Global Settings, Preview, TOML Editor).
+
 ## Extending the Application
 
 ### Adding New Modules
