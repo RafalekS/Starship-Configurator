@@ -18,6 +18,9 @@ from PyQt6.QtCore import Qt, QSize, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QIcon, QAction
 import tomlkit
 
+# Local imports
+from theme_manager import ThemeManager
+
 # --- Configuration Constants ---
 
 SCHEMA_URL = 'https://starship.rs/config-schema.json'
@@ -108,15 +111,17 @@ class StarshipConfigurator(QMainWindow):
         self.schema_data = None
         self.module_widgets = {}  # Store widget references by module
 
-        # Theme state (default to light)
-        self.is_dark_mode = False
+        # Theme manager
+        self.theme_manager = ThemeManager(themes_file="themes.json")
 
         # Build UI first
         self._build_ui()
         self._create_menu_bar()
         self._create_toolbar()
         self._create_status_bar()
-        self._apply_theme()
+
+        # Apply default theme
+        self._apply_selected_theme("Atom")
 
         # Load config after UI is ready
         self._load_initial_config()
@@ -255,6 +260,15 @@ class StarshipConfigurator(QMainWindow):
         ui_group = QGroupBox("User Interface Settings")
         ui_layout = QGridLayout()
         row = 0
+
+        ui_layout.addWidget(QLabel("Theme:"), row, 0)
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItems(self.theme_manager.get_theme_names())
+        self.theme_combo.setCurrentText("Atom")  # Default theme
+        self.theme_combo.currentTextChanged.connect(self._apply_selected_theme)
+        self.theme_combo.setToolTip("Select color theme for the application")
+        ui_layout.addWidget(self.theme_combo, row, 1)
+        row += 1
 
         ui_layout.addWidget(QLabel("Interface Font Size:"), row, 0)
         self.font_size_spin = QSpinBox()
@@ -583,14 +597,6 @@ class StarshipConfigurator(QMainWindow):
         reload_action.triggered.connect(self._reload_config)
         edit_menu.addAction(reload_action)
 
-        # View menu
-        view_menu = menubar.addMenu("&View")
-
-        self.theme_action = QAction("🌙 Dark Mode", self)
-        self.theme_action.setShortcut("Ctrl+T")
-        self.theme_action.triggered.connect(self._toggle_theme)
-        view_menu.addAction(self.theme_action)
-
         # Help menu
         help_menu = menubar.addMenu("&Help")
 
@@ -613,10 +619,6 @@ class StarshipConfigurator(QMainWindow):
         toolbar.addAction("📂 Load", self._load_config_from_file)
         toolbar.addSeparator()
         toolbar.addAction("🔄 Reload", self._reload_config)
-        toolbar.addSeparator()
-
-        # Theme toggle button
-        self.theme_button = toolbar.addAction("🌙 Dark Mode", self._toggle_theme)
 
     def _create_status_bar(self):
         """Create status bar."""
@@ -624,318 +626,6 @@ class StarshipConfigurator(QMainWindow):
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage(f"Ready - Config: {self.config_path}")
 
-    def _apply_theme(self):
-        """Apply the current theme (light or dark)."""
-        if self.is_dark_mode:
-            self._apply_dark_theme()
-        else:
-            self._apply_light_theme()
-
-    def _apply_light_theme(self):
-        """Apply light theme stylesheet."""
-        self.setStyleSheet("""
-            QMainWindow {
-                background-color: #f5f5f5;
-            }
-            QWidget {
-                background-color: #f5f5f5;
-                color: #000000;
-            }
-            QGroupBox {
-                font-weight: bold;
-                border: 2px solid #cccccc;
-                border-radius: 5px;
-                margin-top: 10px;
-                padding-top: 10px;
-                background-color: #ffffff;
-                color: #000000;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-                background-color: #ffffff;
-                color: #000000;
-            }
-            QPushButton {
-                background-color: #0078d4;
-                color: white;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #106ebe;
-            }
-            QPushButton:pressed {
-                background-color: #005a9e;
-            }
-            QLineEdit, QTextEdit, QSpinBox, QComboBox {
-                border: 1px solid #cccccc;
-                border-radius: 3px;
-                padding: 5px;
-                background-color: white;
-                color: #000000;
-            }
-            QLineEdit:focus, QTextEdit:focus, QSpinBox:focus {
-                border: 2px solid #0078d4;
-            }
-            QListWidget {
-                border: 1px solid #cccccc;
-                border-radius: 3px;
-                background-color: white;
-                color: #000000;
-            }
-            QListWidget::item {
-                padding: 5px;
-                color: #000000;
-            }
-            QListWidget::item:selected {
-                background-color: #0078d4;
-                color: white;
-            }
-            QListWidget::item:hover {
-                background-color: #e5f3ff;
-            }
-            QCheckBox {
-                spacing: 5px;
-                color: #000000;
-            }
-            QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-                border: 2px solid #666666;
-                border-radius: 3px;
-                background-color: white;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #0078d4;
-                border: 2px solid #0078d4;
-            }
-            QListWidget::indicator {
-                width: 18px;
-                height: 18px;
-                border: 2px solid #666666;
-                border-radius: 3px;
-                background-color: white;
-            }
-            QListWidget::indicator:checked {
-                background-color: #0078d4;
-                border: 2px solid #0078d4;
-            }
-            QLabel {
-                color: #000000;
-                background-color: transparent;
-            }
-            QMenuBar {
-                background-color: #ffffff;
-                color: #000000;
-            }
-            QMenuBar::item:selected {
-                background-color: #0078d4;
-                color: white;
-            }
-            QMenu {
-                background-color: #ffffff;
-                color: #000000;
-                border: 1px solid #cccccc;
-            }
-            QMenu::item:selected {
-                background-color: #0078d4;
-                color: white;
-            }
-            QToolBar {
-                background-color: #ffffff;
-                border-bottom: 1px solid #cccccc;
-                spacing: 3px;
-                padding: 3px;
-            }
-            QStatusBar {
-                background-color: #ffffff;
-                color: #000000;
-                border-top: 1px solid #cccccc;
-            }
-            QScrollArea {
-                border: none;
-                background-color: #f5f5f5;
-            }
-        """)
-
-    def _apply_dark_theme(self):
-        """Apply dark theme stylesheet."""
-        self.setStyleSheet("""
-            QMainWindow {
-                background-color: #1e1e1e;
-            }
-            QWidget {
-                background-color: #1e1e1e;
-                color: #e0e0e0;
-            }
-            QGroupBox {
-                font-weight: bold;
-                border: 2px solid #3c3c3c;
-                border-radius: 5px;
-                margin-top: 10px;
-                padding-top: 10px;
-                background-color: #2d2d2d;
-                color: #e0e0e0;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-                background-color: #2d2d2d;
-                color: #e0e0e0;
-            }
-            QPushButton {
-                background-color: #0078d4;
-                color: white;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #106ebe;
-            }
-            QPushButton:pressed {
-                background-color: #005a9e;
-            }
-            QLineEdit, QTextEdit, QSpinBox, QComboBox {
-                border: 1px solid #3c3c3c;
-                border-radius: 3px;
-                padding: 5px;
-                background-color: #2d2d2d;
-                color: #e0e0e0;
-                selection-background-color: #0078d4;
-            }
-            QLineEdit:focus, QTextEdit:focus, QSpinBox:focus {
-                border: 2px solid #0078d4;
-            }
-            QListWidget {
-                border: 1px solid #3c3c3c;
-                border-radius: 3px;
-                background-color: #2d2d2d;
-                color: #e0e0e0;
-            }
-            QListWidget::item {
-                padding: 5px;
-                color: #e0e0e0;
-            }
-            QListWidget::item:selected {
-                background-color: #0078d4;
-                color: white;
-            }
-            QListWidget::item:hover {
-                background-color: #3c3c3c;
-            }
-            QCheckBox {
-                spacing: 5px;
-                color: #e0e0e0;
-            }
-            QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-                border: 2px solid #888888;
-                border-radius: 3px;
-                background-color: #1e1e1e;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #0078d4;
-                border: 2px solid #0078d4;
-            }
-            QListWidget::indicator {
-                width: 18px;
-                height: 18px;
-                border: 2px solid #888888;
-                border-radius: 3px;
-                background-color: #1e1e1e;
-            }
-            QListWidget::indicator:checked {
-                background-color: #0078d4;
-                border: 2px solid #0078d4;
-            }
-            QLabel {
-                color: #e0e0e0;
-                background-color: transparent;
-            }
-            QMenuBar {
-                background-color: #2d2d2d;
-                color: #e0e0e0;
-            }
-            QMenuBar::item:selected {
-                background-color: #0078d4;
-                color: white;
-            }
-            QMenu {
-                background-color: #2d2d2d;
-                color: #e0e0e0;
-                border: 1px solid #3c3c3c;
-            }
-            QMenu::item:selected {
-                background-color: #0078d4;
-                color: white;
-            }
-            QToolBar {
-                background-color: #2d2d2d;
-                border-bottom: 1px solid #3c3c3c;
-                spacing: 3px;
-                padding: 3px;
-            }
-            QToolButton {
-                color: #e0e0e0;
-                padding: 5px;
-            }
-            QStatusBar {
-                background-color: #2d2d2d;
-                color: #e0e0e0;
-                border-top: 1px solid #3c3c3c;
-            }
-            QScrollArea {
-                border: none;
-                background-color: #1e1e1e;
-            }
-            QScrollBar:vertical {
-                background-color: #2d2d2d;
-                width: 12px;
-                border-radius: 6px;
-            }
-            QScrollBar::handle:vertical {
-                background-color: #5c5c5c;
-                border-radius: 6px;
-                min-height: 20px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background-color: #6c6c6c;
-            }
-            QScrollBar:horizontal {
-                background-color: #2d2d2d;
-                height: 12px;
-                border-radius: 6px;
-            }
-            QScrollBar::handle:horizontal {
-                background-color: #5c5c5c;
-                border-radius: 6px;
-                min-width: 20px;
-            }
-            QScrollBar::handle:horizontal:hover {
-                background-color: #6c6c6c;
-            }
-            QSpinBox::up-button, QSpinBox::down-button {
-                background-color: #3c3c3c;
-            }
-            QComboBox::drop-down {
-                background-color: #3c3c3c;
-                border-left: 1px solid #3c3c3c;
-            }
-            QComboBox QAbstractItemView {
-                background-color: #2d2d2d;
-                color: #e0e0e0;
-                selection-background-color: #0078d4;
-                border: 1px solid #3c3c3c;
-            }
-        """)
 
     # === Configuration Management ===
 
@@ -1304,20 +994,10 @@ class StarshipConfigurator(QMainWindow):
         self.full_config_editor.setFont(QFont("Monospace", size))
         self.status_bar.showMessage(f"Code editor font size: {size}pt", 2000)
 
-    def _toggle_theme(self):
-        """Toggle between light and dark themes."""
-        self.is_dark_mode = not self.is_dark_mode
-        self._apply_theme()
-
-        # Update menu and toolbar button text
-        if self.is_dark_mode:
-            self.theme_action.setText("☀️ Light Mode")
-            self.theme_button.setText("☀️ Light Mode")
-            self.status_bar.showMessage("🌙 Dark mode enabled", 2000)
-        else:
-            self.theme_action.setText("🌙 Dark Mode")
-            self.theme_button.setText("🌙 Dark Mode")
-            self.status_bar.showMessage("☀️ Light mode enabled", 2000)
+    def _apply_selected_theme(self, theme_name: str):
+        """Apply the selected theme from theme manager."""
+        self.theme_manager.apply_theme(QApplication.instance(), theme_name)
+        self.status_bar.showMessage(f"Applied theme: {theme_name}", 2000)
 
     def _open_url(self, url: str):
         """Open URL in default browser."""
