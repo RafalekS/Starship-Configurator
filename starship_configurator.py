@@ -321,24 +321,6 @@ class StarshipConfigurator(QMainWindow):
         perf_group.setLayout(perf_layout)
         panel_layout.addWidget(perf_group)
 
-        # === Palette Settings ===
-        palette_group = QGroupBox("Color Palette (Optional)")
-        palette_layout = QGridLayout()
-        palette_layout.addWidget(QLabel("Override terminal colors with custom palette"))
-        palette_group.setLayout(palette_layout)
-        panel_layout.addWidget(palette_group)
-
-        # === Custom Format ===
-        format_group = QGroupBox("Custom Prompt Format (Advanced)")
-        format_layout = QVBoxLayout()
-        format_layout.addWidget(QLabel("Override default module order and format:"))
-        self.format_edit = QTextEdit()
-        self.format_edit.setPlaceholderText("Leave empty for default format...\nExample: $username$hostname$directory$git_branch$character")
-        self.format_edit.setMaximumHeight(100)
-        format_layout.addWidget(self.format_edit)
-        format_group.setLayout(format_layout)
-        panel_layout.addWidget(format_group)
-
         scroll.setWidget(panel)
         layout.addWidget(scroll)
 
@@ -684,7 +666,6 @@ class StarshipConfigurator(QMainWindow):
         self.scan_timeout_spin.setValue(self.config_data.get('scan_timeout', 30))
         self.command_timeout_spin.setValue(self.config_data.get('command_timeout', 500))
         self.follow_symlinks_check.setChecked(self.config_data.get('follow_symlinks', True))
-        self.format_edit.setPlainText(self.config_data.get('format', ''))
 
         # Module settings will be loaded when panels are created
         self._update_full_editor()
@@ -844,12 +825,6 @@ class StarshipConfigurator(QMainWindow):
         self.config_data['scan_timeout'] = self.scan_timeout_spin.value()
         self.config_data['command_timeout'] = self.command_timeout_spin.value()
         self.config_data['follow_symlinks'] = self.follow_symlinks_check.isChecked()
-
-        format_text = self.format_edit.toPlainText().strip()
-        if format_text:
-            self.config_data['format'] = format_text
-        elif 'format' in self.config_data:
-            del self.config_data['format']
 
         # Module settings
         for module_name, widget_dict in self.module_widgets.items():
