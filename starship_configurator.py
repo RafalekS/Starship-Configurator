@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QListWidget, QStackedWidget, QLineEdit, QCheckBox, QPushButton,
     QTextEdit, QLabel, QFileDialog, QMessageBox, QGridLayout,
     QScrollArea, QGroupBox, QComboBox, QSpinBox, QListWidgetItem,
-    QToolBar, QStatusBar, QSplitter
+    QToolBar, QStatusBar, QSplitter, QTabWidget
 )
 from PyQt6.QtCore import Qt, QSize, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QIcon, QAction
