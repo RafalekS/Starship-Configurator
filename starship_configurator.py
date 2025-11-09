@@ -129,28 +129,33 @@ class StarshipConfigurator(QMainWindow):
         # Load preferences and apply saved settings
         prefs = self._load_preferences()
         saved_theme = prefs.get('theme', 'Atom')
-        saved_font_size = prefs.get('font_size', 9)
+        saved_widget_font = prefs.get('widget_font_family', 'Sans Serif')
+        saved_widget_font_size = prefs.get('widget_font_size', 9)
+        saved_code_font = prefs.get('code_font_family', 'Monospace')
         saved_code_font_size = prefs.get('code_font_size', 10)
-
-        self._apply_selected_theme(saved_theme)
 
         # Set UI values to saved preferences (block signals to avoid duplicate saves)
         self.theme_combo.blockSignals(True)
-        self.font_size_spin.blockSignals(True)
+        self.widget_font_combo.blockSignals(True)
+        self.widget_font_size_spin.blockSignals(True)
+        self.code_font_combo.blockSignals(True)
         self.code_font_size_spin.blockSignals(True)
 
         self.theme_combo.setCurrentText(saved_theme)
-        self.font_size_spin.setValue(saved_font_size)
+        self.widget_font_combo.setCurrentText(saved_widget_font)
+        self.widget_font_size_spin.setValue(saved_widget_font_size)
+        self.code_font_combo.setCurrentText(saved_code_font)
         self.code_font_size_spin.setValue(saved_code_font_size)
 
         self.theme_combo.blockSignals(False)
-        self.font_size_spin.blockSignals(False)
+        self.widget_font_combo.blockSignals(False)
+        self.widget_font_size_spin.blockSignals(False)
+        self.code_font_combo.blockSignals(False)
         self.code_font_size_spin.blockSignals(False)
 
-        # Apply saved font sizes without saving again
-        font = QFont("Sans Serif", saved_font_size)
-        QApplication.instance().setFont(font)
-        self.full_config_editor.setFont(QFont("Monospace", saved_code_font_size))
+        # Apply theme first, then override with custom fonts
+        self._apply_selected_theme(saved_theme)
+        self._update_widget_fonts()
 
         # Load config after UI is ready
         self._load_initial_config()
@@ -303,21 +308,39 @@ class StarshipConfigurator(QMainWindow):
         ui_layout.addWidget(self.theme_combo, row, 1)
         row += 1
 
-        ui_layout.addWidget(QLabel("Interface Font Size:"), row, 0)
-        self.font_size_spin = QSpinBox()
-        self.font_size_spin.setRange(8, 24)
-        self.font_size_spin.setValue(9)
-        self.font_size_spin.setToolTip("Adjust the size of text throughout the application")
-        self.font_size_spin.valueChanged.connect(self._update_app_font_size)
-        ui_layout.addWidget(self.font_size_spin, row, 1)
+        ui_layout.addWidget(QLabel("Widget Font Family:"), row, 0)
+        self.widget_font_combo = QComboBox()
+        self.widget_font_combo.addItems(["Sans Serif", "Arial", "Helvetica", "Verdana", "Tahoma", "Calibri", "Segoe UI"])
+        self.widget_font_combo.setCurrentText("Sans Serif")
+        self.widget_font_combo.currentTextChanged.connect(self._update_widget_fonts)
+        self.widget_font_combo.setToolTip("Font family for labels, buttons, inputs")
+        ui_layout.addWidget(self.widget_font_combo, row, 1)
         row += 1
 
-        ui_layout.addWidget(QLabel("Code Editor Font Size:"), row, 0)
+        ui_layout.addWidget(QLabel("Widget Font Size (pt):"), row, 0)
+        self.widget_font_size_spin = QSpinBox()
+        self.widget_font_size_spin.setRange(6, 24)
+        self.widget_font_size_spin.setValue(9)
+        self.widget_font_size_spin.setToolTip("Font size for labels, buttons, inputs")
+        self.widget_font_size_spin.valueChanged.connect(self._update_widget_fonts)
+        ui_layout.addWidget(self.widget_font_size_spin, row, 1)
+        row += 1
+
+        ui_layout.addWidget(QLabel("Code Font Family:"), row, 0)
+        self.code_font_combo = QComboBox()
+        self.code_font_combo.addItems(["Monospace", "Courier New", "Consolas", "Monaco", "DejaVu Sans Mono", "Fira Code"])
+        self.code_font_combo.setCurrentText("Monospace")
+        self.code_font_combo.currentTextChanged.connect(self._update_widget_fonts)
+        self.code_font_combo.setToolTip("Font family for TOML editor and code displays")
+        ui_layout.addWidget(self.code_font_combo, row, 1)
+        row += 1
+
+        ui_layout.addWidget(QLabel("Code Font Size (pt):"), row, 0)
         self.code_font_size_spin = QSpinBox()
-        self.code_font_size_spin.setRange(8, 24)
+        self.code_font_size_spin.setRange(6, 24)
         self.code_font_size_spin.setValue(10)
-        self.code_font_size_spin.setToolTip("Adjust the size of monospace text in TOML editor")
-        self.code_font_size_spin.valueChanged.connect(self._update_code_font_size)
+        self.code_font_size_spin.setToolTip("Font size for TOML editor and code displays")
+        self.code_font_size_spin.valueChanged.connect(self._update_widget_fonts)
         ui_layout.addWidget(self.code_font_size_spin, row, 1)
         row += 1
 
@@ -1102,26 +1125,40 @@ class StarshipConfigurator(QMainWindow):
 
     # === Utility Methods ===
 
-    def _update_app_font_size(self, size: int):
-        """Update the application-wide font size."""
-        font = QFont("Sans Serif", size)
-        QApplication.instance().setFont(font)
-        self.status_bar.showMessage(f"Interface font size: {size}pt", 2000)
+    def _update_widget_fonts(self):
+        """Update all widget fonts based on current settings."""
+        widget_font_family = self.widget_font_combo.currentText()
+        widget_font_size = self.widget_font_size_spin.value()
+        code_font_family = self.code_font_combo.currentText()
+        code_font_size = self.code_font_size_spin.value()
 
-        # Save font size preference
+        # Get current theme and override font settings
+        current_theme = self.theme_combo.currentText()
+        theme = self.theme_manager.get_theme(current_theme)
+
+        if theme:
+            # Override font settings in theme
+            theme['fontFamily'] = widget_font_family
+            theme['fontSize'] = f'{widget_font_size}pt'
+            theme['labelFontSize'] = f'{widget_font_size}pt'
+            theme['buttonFontSize'] = f'{widget_font_size}pt'
+            theme['inputFontSize'] = f'{widget_font_size}pt'
+            theme['codeFontFamily'] = code_font_family
+            theme['codeFontSize'] = f'{code_font_size}pt'
+
+            # Re-apply theme with updated fonts
+            stylesheet = self.theme_manager.generate_stylesheet(current_theme)
+            QApplication.instance().setStyleSheet(stylesheet)
+
+        # Save font preferences
         prefs = self._load_preferences()
-        prefs['font_size'] = size
+        prefs['widget_font_family'] = widget_font_family
+        prefs['widget_font_size'] = widget_font_size
+        prefs['code_font_family'] = code_font_family
+        prefs['code_font_size'] = code_font_size
         self._save_preferences(prefs)
 
-    def _update_code_font_size(self, size: int):
-        """Update the code editor font size."""
-        self.full_config_editor.setFont(QFont("Monospace", size))
-        self.status_bar.showMessage(f"Code editor font size: {size}pt", 2000)
-
-        # Save code font size preference
-        prefs = self._load_preferences()
-        prefs['code_font_size'] = size
-        self._save_preferences(prefs)
+        self.status_bar.showMessage(f"Fonts updated: {widget_font_family} {widget_font_size}pt", 2000)
 
     def _apply_selected_theme(self, theme_name: str):
         """Apply the selected theme from theme manager."""
