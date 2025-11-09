@@ -128,163 +128,264 @@ class StarshipConfigurator(QMainWindow):
         self.schema_thread.start()
 
     def _build_ui(self):
-        """Sets up the main layout and widgets with improved design."""
-        # Central widget with main splitter
+        """Sets up the main layout with tabbed interface."""
+        # Central widget with tab layout
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
 
+        # Create main tab widget
+        self.main_tabs = QTabWidget()
+        main_layout.addWidget(self.main_tabs)
+
+        # === TAB 1: Modules ===
+        modules_tab = self._create_modules_tab()
+        self.main_tabs.addTab(modules_tab, "🔧 Modules")
+
+        # === TAB 2: Global Settings ===
+        global_tab = self._create_global_settings_tab()
+        self.main_tabs.addTab(global_tab, "⚙️ Global Settings")
+
+        # === TAB 3: Preview ===
+        preview_tab = self._create_preview_tab()
+        self.main_tabs.addTab(preview_tab, "✨ Preview")
+
+        # === TAB 4: TOML Editor ===
+        toml_tab = self._create_toml_editor_tab()
+        self.main_tabs.addTab(toml_tab, "📝 TOML Editor")
+
+    def _create_modules_tab(self) -> QWidget:
+        """Create the modules tab with list and config panels."""
+        tab = QWidget()
+        layout = QHBoxLayout(tab)
+        layout.setContentsMargins(0, 0, 0, 0)
+
         # Create splitter for resizable panels
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        # === LEFT PANEL: Module List ===
-        left_panel = self._create_module_list_panel()
-        splitter.addWidget(left_panel)
-
-        # === RIGHT PANEL: Configuration Area ===
-        right_panel = self._create_config_panel()
-        splitter.addWidget(right_panel)
-
-        # Set initial splitter sizes (30% left, 70% right)
-        splitter.setSizes([400, 1000])
-
-        main_layout.addWidget(splitter)
-
-        # === BOTTOM PANEL: Preview and Actions ===
-        bottom_panel = self._create_bottom_panel()
-        main_layout.addWidget(bottom_panel)
-
-    def _create_module_list_panel(self) -> QWidget:
-        """Create the left sidebar with module list."""
-        panel = QWidget()
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(5, 5, 5, 5)
+        # LEFT: Module list
+        left_panel = QWidget()
+        left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(5, 5, 5, 5)
 
         # Search box
         search_label = QLabel("🔍 Search Modules:")
         search_label.setStyleSheet("font-weight: bold; padding: 5px;")
-        layout.addWidget(search_label)
+        left_layout.addWidget(search_label)
 
         self.module_search = QLineEdit()
-        self.module_search.setPlaceholderText("Type to filter modules...")
+        self.module_search.setPlaceholderText("Type to filter...")
         self.module_search.textChanged.connect(self._filter_modules)
-        layout.addWidget(self.module_search)
+        left_layout.addWidget(self.module_search)
 
-        # Module category tabs
-        category_label = QLabel("📦 Module Categories:")
+        # Module category filter
+        category_label = QLabel("📦 Filter:")
         category_label.setStyleSheet("font-weight: bold; padding: 5px; margin-top: 10px;")
-        layout.addWidget(category_label)
+        left_layout.addWidget(category_label)
 
         self.category_combo = QComboBox()
-        self.category_combo.addItems(["Common Modules", "All Modules", "Active Modules"])
+        self.category_combo.addItems(["All Modules", "Active Modules", "Inactive Modules"])
         self.category_combo.currentTextChanged.connect(self._update_module_list)
-        layout.addWidget(self.category_combo)
+        left_layout.addWidget(self.category_combo)
 
         # Module list
         self.module_list = QListWidget()
         self.module_list.setAlternatingRowColors(True)
-        layout.addWidget(self.module_list)
+        left_layout.addWidget(self.module_list)
 
-        # Current config path display
-        path_label = QLabel(f"📁 Config: {self.config_path.name}")
-        path_label.setStyleSheet("padding: 5px; font-size: 10px; color: #666;")
-        path_label.setWordWrap(True)
-        path_label.setToolTip(str(self.config_path))
-        layout.addWidget(path_label)
-        self.path_label = path_label
+        splitter.addWidget(left_panel)
 
-        return panel
+        # RIGHT: Module config panel
+        right_panel = QWidget()
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(5, 5, 5, 5)
 
-    def _create_config_panel(self) -> QWidget:
-        """Create the right panel with stacked configuration widgets."""
-        panel = QWidget()
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(5, 5, 5, 5)
-
-        # Stacked widget for different module configs
         self.stacked_widget = QStackedWidget()
-        layout.addWidget(self.stacked_widget)
+        right_layout.addWidget(self.stacked_widget)
 
-        # Create initial panels
-        self._create_global_settings_panel()
+        # Welcome panel (shows when no module selected)
+        welcome = QWidget()
+        welcome_layout = QVBoxLayout(welcome)
+        welcome_label = QLabel("👈 Select a module from the list to configure it")
+        welcome_label.setStyleSheet("font-size: 14px; padding: 20px; color: #666;")
+        welcome_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        welcome_layout.addWidget(welcome_label)
+        self.stacked_widget.addWidget(welcome)
 
-        return panel
+        splitter.addWidget(right_panel)
 
-    def _create_global_settings_panel(self):
-        """Create the global settings panel with improved layout."""
+        # Set splitter sizes
+        splitter.setSizes([350, 1050])
+
+        layout.addWidget(splitter)
+        return tab
+
+    def _create_global_settings_tab(self) -> QWidget:
+        """Create comprehensive global settings tab."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(10, 10, 10, 10)
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
 
         panel = QWidget()
-        layout = QVBoxLayout(panel)
-        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        panel_layout = QVBoxLayout(panel)
+        panel_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        # Title
-        title = QLabel("⚙️ Global Starship Settings")
-        title.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px;")
-        layout.addWidget(title)
+        # === General Settings ===
+        general_group = QGroupBox("General Settings")
+        general_layout = QGridLayout()
+        row = 0
 
-        # Global settings group
-        global_group = QGroupBox("General Configuration")
-        global_layout = QGridLayout()
+        general_layout.addWidget(QLabel("Config Path:"), row, 0)
+        path_label = QLabel(str(self.config_path))
+        path_label.setStyleSheet("color: #0078d4; padding: 5px;")
+        path_label.setWordWrap(True)
+        general_layout.addWidget(path_label, row, 1)
+        row += 1
 
         self.add_newline_check = QCheckBox("Add newline before prompt")
         self.add_newline_check.setChecked(True)
-        global_layout.addWidget(self.add_newline_check, 0, 0, 1, 2)
+        general_layout.addWidget(self.add_newline_check, row, 0, 1, 2)
+        row += 1
 
-        # Scan timeout
-        global_layout.addWidget(QLabel("Scan timeout (ms):"), 1, 0)
+        general_group.setLayout(general_layout)
+        panel_layout.addWidget(general_group)
+
+        # === Performance Settings ===
+        perf_group = QGroupBox("Performance Settings")
+        perf_layout = QGridLayout()
+        row = 0
+
+        perf_layout.addWidget(QLabel("Scan timeout (ms):"), row, 0)
         self.scan_timeout_spin = QSpinBox()
         self.scan_timeout_spin.setRange(0, 10000)
         self.scan_timeout_spin.setValue(30)
-        self.scan_timeout_spin.setToolTip("Timeout for scanning files (milliseconds)")
-        global_layout.addWidget(self.scan_timeout_spin, 1, 1)
+        self.scan_timeout_spin.setToolTip("Timeout for scanning files")
+        perf_layout.addWidget(self.scan_timeout_spin, row, 1)
+        row += 1
 
-        # Command timeout
-        global_layout.addWidget(QLabel("Command timeout (ms):"), 2, 0)
+        perf_layout.addWidget(QLabel("Command timeout (ms):"), row, 0)
         self.command_timeout_spin = QSpinBox()
         self.command_timeout_spin.setRange(0, 10000)
         self.command_timeout_spin.setValue(500)
-        self.command_timeout_spin.setToolTip("Timeout for executing commands (milliseconds)")
-        global_layout.addWidget(self.command_timeout_spin, 2, 1)
+        self.command_timeout_spin.setToolTip("Timeout for executing commands")
+        perf_layout.addWidget(self.command_timeout_spin, row, 1)
+        row += 1
 
-        global_group.setLayout(global_layout)
-        layout.addWidget(global_group)
+        perf_layout.addWidget(QLabel("Follow symlinks:"), row, 0)
+        self.follow_symlinks_check = QCheckBox("Enable")
+        self.follow_symlinks_check.setChecked(True)
+        perf_layout.addWidget(self.follow_symlinks_check, row, 1)
+        row += 1
 
-        # Format group
-        format_group = QGroupBox("Prompt Format")
+        perf_group.setLayout(perf_layout)
+        panel_layout.addWidget(perf_group)
+
+        # === Palette Settings ===
+        palette_group = QGroupBox("Color Palette (Optional)")
+        palette_layout = QGridLayout()
+        palette_layout.addWidget(QLabel("Override terminal colors with custom palette"))
+        palette_group.setLayout(palette_layout)
+        panel_layout.addWidget(palette_group)
+
+        # === Custom Format ===
+        format_group = QGroupBox("Custom Prompt Format (Advanced)")
         format_layout = QVBoxLayout()
-
-        format_layout.addWidget(QLabel("Custom prompt format:"))
+        format_layout.addWidget(QLabel("Override default module order and format:"))
         self.format_edit = QTextEdit()
-        self.format_edit.setPlaceholderText("Leave empty to use default format with enabled modules...")
+        self.format_edit.setPlaceholderText("Leave empty for default format...\nExample: $username$hostname$directory$git_branch$character")
         self.format_edit.setMaximumHeight(100)
         format_layout.addWidget(self.format_edit)
-
         format_group.setLayout(format_layout)
-        layout.addWidget(format_group)
+        panel_layout.addWidget(format_group)
 
-        # Advanced TOML editor
-        toml_group = QGroupBox("Advanced: Direct TOML Editing")
-        toml_layout = QVBoxLayout()
+        scroll.setWidget(panel)
+        layout.addWidget(scroll)
 
+        return tab
+
+    def _create_preview_tab(self) -> QWidget:
+        """Create the preview tab with large preview area."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(10, 10, 10, 10)
+
+        # Title and description
+        title = QLabel("✨ Configuration Preview")
+        title.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px;")
+        layout.addWidget(title)
+
+        desc = QLabel("Preview how Starship will parse your configuration. Save and restart your terminal to see the actual prompt.")
+        desc.setStyleSheet("padding: 5px; color: #666;")
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
+
+        # Large preview area
+        self.preview_text = QTextEdit()
+        self.preview_text.setReadOnly(True)
+        self.preview_text.setPlaceholderText("Click 'Generate Preview' to see your configuration...")
+        self.preview_text.setFont(QFont("Courier New", 10))
+        layout.addWidget(self.preview_text)
+
+        # Action buttons
+        button_layout = QHBoxLayout()
+
+        self.preview_button = QPushButton("✨ Generate Preview")
+        self.preview_button.clicked.connect(self._generate_preview)
+        button_layout.addWidget(self.preview_button)
+
+        self.save_button = QPushButton("💾 Save Configuration")
+        self.save_button.clicked.connect(self._save_config)
+        button_layout.addWidget(self.save_button)
+
+        button_layout.addStretch()
+
+        layout.addLayout(button_layout)
+
+        return tab
+
+    def _create_toml_editor_tab(self) -> QWidget:
+        """Create the TOML editor tab."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(10, 10, 10, 10)
+
+        # Title
+        title = QLabel("📝 Advanced TOML Editor")
+        title.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px;")
+        layout.addWidget(title)
+
+        desc = QLabel("⚠️ Direct editing - be careful with syntax! Use this for advanced configurations.")
+        desc.setStyleSheet("padding: 5px; color: #ff6b6b;")
+        layout.addWidget(desc)
+
+        # TOML editor
         self.full_config_editor = QTextEdit()
         self.full_config_editor.setPlaceholderText("Loading configuration...")
         self.full_config_editor.setFont(QFont("Courier New", 10))
-        toml_layout.addWidget(self.full_config_editor)
+        layout.addWidget(self.full_config_editor)
+
+        # Buttons
+        button_layout = QHBoxLayout()
 
         reload_btn = QPushButton("🔄 Reload from TOML")
         reload_btn.clicked.connect(self._reload_from_toml_editor)
-        toml_layout.addWidget(reload_btn)
+        reload_btn.setToolTip("Parse the TOML and update all UI fields")
+        button_layout.addWidget(reload_btn)
 
-        toml_group.setLayout(toml_layout)
-        layout.addWidget(toml_group)
+        save_btn = QPushButton("💾 Save Configuration")
+        save_btn.clicked.connect(self._save_config)
+        button_layout.addWidget(save_btn)
 
-        scroll.setWidget(panel)
-        self.stacked_widget.addWidget(scroll)
-        self.global_settings_panel = scroll
+        button_layout.addStretch()
+
+        layout.addLayout(button_layout)
+
+        return tab
 
     def _create_module_panel(self, module_name: str, schema_props: Optional[Dict] = None):
         """Create a configuration panel for a specific module."""
@@ -405,46 +506,6 @@ class StarshipConfigurator(QMainWindow):
             if 'description' in prop_schema:
                 widget.setPlaceholderText(prop_schema['description'][:50] + "...")
             return widget
-
-    def _create_bottom_panel(self) -> QWidget:
-        """Create bottom panel with preview and action buttons."""
-        panel = QWidget()
-        panel.setMaximumHeight(200)
-        layout = QVBoxLayout(panel)
-
-        # Preview area
-        preview_label = QLabel("✨ Prompt Preview:")
-        preview_label.setStyleSheet("font-weight: bold; padding: 5px;")
-        layout.addWidget(preview_label)
-
-        self.preview_text = QTextEdit()
-        self.preview_text.setReadOnly(True)
-        self.preview_text.setPlaceholderText("Click 'Generate Preview' to see your prompt...")
-        self.preview_text.setMaximumHeight(80)
-        self.preview_text.setFont(QFont("Courier New", 10))
-        layout.addWidget(self.preview_text)
-
-        # Action buttons
-        button_layout = QHBoxLayout()
-
-        self.preview_button = QPushButton("✨ Generate Preview")
-        self.preview_button.setToolTip("Preview your prompt configuration")
-        self.preview_button.clicked.connect(self._generate_preview)
-        button_layout.addWidget(self.preview_button)
-
-        self.save_button = QPushButton("💾 Save Configuration")
-        self.save_button.setToolTip("Save to starship.toml")
-        self.save_button.clicked.connect(self._save_config)
-        button_layout.addWidget(self.save_button)
-
-        self.export_button = QPushButton("📤 Export As...")
-        self.export_button.setToolTip("Export configuration to a different file")
-        self.export_button.clicked.connect(self._export_config)
-        button_layout.addWidget(self.export_button)
-
-        layout.addLayout(button_layout)
-
-        return panel
 
     def _create_menu_bar(self):
         """Create application menu bar."""
@@ -894,6 +955,7 @@ class StarshipConfigurator(QMainWindow):
         self.add_newline_check.setChecked(self.config_data.get('add_newline', True))
         self.scan_timeout_spin.setValue(self.config_data.get('scan_timeout', 30))
         self.command_timeout_spin.setValue(self.config_data.get('command_timeout', 500))
+        self.follow_symlinks_check.setChecked(self.config_data.get('follow_symlinks', True))
         self.format_edit.setPlainText(self.config_data.get('format', ''))
 
         # Module settings will be loaded when panels are created
@@ -915,18 +977,14 @@ class StarshipConfigurator(QMainWindow):
 
         self.module_list.clear()
 
-        # Add global settings (no checkbox)
-        global_item = QListWidgetItem("⚙️ Global Settings")
-        self.module_list.addItem(global_item)
-
         # Determine which modules to show
         category = self.category_combo.currentText()
         search_text = self.module_search.text().lower()
 
-        if category == "Common Modules":
-            modules = COMMON_MODULES
-        elif category == "Active Modules":
-            modules = [m for m in STARSHIP_MODULES if m in self.config_data] if self.config_data else []
+        if category == "Active Modules":
+            modules = [m for m in STARSHIP_MODULES if m in self.config_data and not self.config_data[m].get('disabled', False)] if self.config_data else []
+        elif category == "Inactive Modules":
+            modules = [m for m in STARSHIP_MODULES if m not in self.config_data or self.config_data[m].get('disabled', False)] if self.config_data else STARSHIP_MODULES
         else:  # All Modules
             modules = sorted(STARSHIP_MODULES)
 
@@ -994,14 +1052,11 @@ class StarshipConfigurator(QMainWindow):
 
     def _on_module_selected(self, row: int):
         """Handle module selection from list."""
-        if row == 0:  # Global settings
-            self.stacked_widget.setCurrentWidget(self.global_settings_panel)
-        else:
-            item = self.module_list.item(row)
-            if item:
-                module_name = item.data(Qt.ItemDataRole.UserRole)
-                if module_name:
-                    self._show_module_panel(module_name)
+        item = self.module_list.item(row)
+        if item:
+            module_name = item.data(Qt.ItemDataRole.UserRole)
+            if module_name:
+                self._show_module_panel(module_name)
 
     def _show_module_panel(self, module_name: str):
         """Show or create panel for the given module."""
@@ -1059,6 +1114,7 @@ class StarshipConfigurator(QMainWindow):
         self.config_data['add_newline'] = self.add_newline_check.isChecked()
         self.config_data['scan_timeout'] = self.scan_timeout_spin.value()
         self.config_data['command_timeout'] = self.command_timeout_spin.value()
+        self.config_data['follow_symlinks'] = self.follow_symlinks_check.isChecked()
 
         format_text = self.format_edit.toPlainText().strip()
         if format_text:
