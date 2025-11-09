@@ -387,7 +387,7 @@ class StarshipConfigurator(QMainWindow):
 
         return tab
 
-    def _create_module_panel(self, module_name: str, schema_props: Optional[Dict] = None):
+    def _create_module_panel(self, module_name: str, schema_props: Optional[Dict] = None, description: Optional[str] = None):
         """Create a configuration panel for a specific module."""
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -401,6 +401,38 @@ class StarshipConfigurator(QMainWindow):
         title = QLabel(f"🔧 {module_name.replace('_', ' ').title()} Module")
         title.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px;")
         layout.addWidget(title)
+
+        # Description section (if available from schema)
+        if description:
+            desc_group = QGroupBox("📖 Description")
+            desc_layout = QVBoxLayout()
+            desc_label = QLabel(description)
+            desc_label.setWordWrap(True)
+            desc_label.setStyleSheet("padding: 5px;")
+            desc_layout.addWidget(desc_label)
+            desc_group.setLayout(desc_layout)
+            layout.addWidget(desc_group)
+        else:
+            # Fallback description if schema doesn't provide one
+            desc_group = QGroupBox("📖 About This Module")
+            desc_layout = QVBoxLayout()
+            desc_label = QLabel(f"The '{module_name}' module displays information in your Starship prompt.")
+            desc_label.setWordWrap(True)
+            desc_label.setStyleSheet("padding: 5px;")
+            desc_layout.addWidget(desc_label)
+            desc_group.setLayout(desc_layout)
+            layout.addWidget(desc_group)
+
+        # Add example/usage information
+        example_group = QGroupBox("💡 Example & Usage")
+        example_layout = QVBoxLayout()
+        example_text = self._get_module_example(module_name)
+        example_label = QLabel(example_text)
+        example_label.setWordWrap(True)
+        example_label.setStyleSheet("padding: 5px; font-family: 'Courier New';")
+        example_layout.addWidget(example_label)
+        example_group.setLayout(example_layout)
+        layout.addWidget(example_group)
 
         # Enable/Disable
         enable_check = QCheckBox(f"Enable {module_name} module")
@@ -478,6 +510,36 @@ class StarshipConfigurator(QMainWindow):
         self.stacked_widget.addWidget(scroll)
 
         return scroll
+
+    def _get_module_example(self, module_name: str) -> str:
+        """Get example and usage information for a module."""
+        examples = {
+            'docker_context': 'Shows the active Docker context.\nExample: 🐳 default\nUseful when working with multiple Docker environments.',
+            'git_branch': 'Displays the current Git branch.\nExample: 🌱 main | ⎇ feature/new-ui\nShows branch name with custom symbols.',
+            'git_status': 'Shows Git repository status (changes, staged files).\nExample: [+3 ~2 -1]\nIndicates added, modified, and deleted files.',
+            'python': 'Shows Python version and virtual environment.\nExample: 🐍 v3.11.2 (.venv)\nDisplays when in a Python project.',
+            'nodejs': 'Displays Node.js version.\nExample: ⬢ v20.10.0\nShows when package.json is detected.',
+            'rust': 'Shows Rust version via rustc.\nExample: 🦀 v1.75.0\nDisplays in Rust projects.',
+            'golang': 'Displays Go version.\nExample: 🐹 v1.21.5\nShows when go.mod is present.',
+            'java': 'Shows Java version.\nExample: ☕ v21.0.1\nDisplays in Java projects.',
+            'kubernetes': 'Shows current Kubernetes context and namespace.\nExample: ☸ production/default\nUseful for kubectl users.',
+            'aws': 'Displays active AWS profile and region.\nExample: ☁️ us-east-1 (prod)\nShows AWS CLI configuration.',
+            'gcloud': 'Shows Google Cloud project and region.\nExample: ☁️ my-project (us-central1)\nFor GCP users.',
+            'directory': 'Shows current working directory path.\nExample: 📁 ~/projects/app\nCustomizable truncation and formatting.',
+            'character': 'The prompt character (changes color on error).\nExample: ❯ (green) or ❯ (red)\nIndicates last command success/failure.',
+            'cmd_duration': 'Shows how long the last command took.\nExample: 🕙 2.3s\nDisplayed when above threshold.',
+            'time': 'Displays current time.\nExample: 🕙 15:45:32\nCustomizable time format.',
+            'battery': 'Shows battery level and status.\nExample: 🔋 85%\nDisplayed when below threshold.',
+            'memory_usage': 'Shows system memory usage.\nExample: 💾 4.2 GB / 16 GB\nDisplays RAM consumption.',
+            'status': 'Shows exit code of last command.\nExample: ✘ 127\nOnly shown on errors.',
+            'terraform': 'Shows Terraform workspace and version.\nExample: 💠 workspace: default\nFor Terraform users.',
+            'container': 'Indicates if running inside a container.\nExample: 📦 container\nDetects Docker/LXC/Podman.',
+        }
+
+        return examples.get(module_name,
+            f"Configures the '{module_name}' module.\n"
+            f"See documentation: https://starship.rs/config/#{module_name}"
+        )
 
     def _create_widget_for_schema(self, prop_schema: Dict) -> QWidget:
         """Create appropriate widget based on JSON schema property type."""
@@ -1064,24 +1126,25 @@ class StarshipConfigurator(QMainWindow):
         if module_name not in self.module_widgets:
             # Get schema for this module if available
             schema_props = None
+            schema_description = None
             if self.schema_data and 'properties' in self.schema_data:
-                schema_props = self.schema_data['properties'].get(module_name, {}).get('properties', {})
+                module_schema = self.schema_data['properties'].get(module_name, {})
+                schema_props = module_schema.get('properties', {})
+                schema_description = module_schema.get('description', None)
 
-            panel = self._create_module_panel(module_name, schema_props)
+            panel = self._create_module_panel(module_name, schema_props, schema_description)
+
+            # Store the panel index
+            panel_index = self.stacked_widget.count() - 1  # Index of the panel we just added
+            self.module_widgets[module_name]['panel_index'] = panel_index
 
             # Load existing config for this module
             if self.config_data and module_name in self.config_data:
                 self._load_module_config(module_name)
 
-        # Find and show the panel
-        for i in range(self.stacked_widget.count()):
-            widget = self.stacked_widget.widget(i)
-            # Match by finding the module name in widgets
-            if module_name in self.module_widgets:
-                # Get the index based on module creation order
-                # This is a simplified approach; you might want to store panel indices
-                self.stacked_widget.setCurrentIndex(i)
-                break
+        # Show the panel
+        if module_name in self.module_widgets and 'panel_index' in self.module_widgets[module_name]:
+            self.stacked_widget.setCurrentIndex(self.module_widgets[module_name]['panel_index'])
 
     def _load_module_config(self, module_name: str):
         """Load configuration values for a specific module into its widgets."""
