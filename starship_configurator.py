@@ -475,7 +475,7 @@ class StarshipConfigurator(QMainWindow):
         return tab
 
     def _create_prompt_config_tab(self) -> QWidget:
-        """Create dedicated prompt configuration tab."""
+        """Create dedicated prompt configuration tab with visual format editor."""
         tab = QWidget()
         layout = QVBoxLayout(tab)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -499,43 +499,57 @@ class StarshipConfigurator(QMainWindow):
         desc.setStyleSheet("padding: 5px; color: #666;")
         panel_layout.addWidget(desc)
 
-        # Settings group
-        settings_group = QGroupBox("Prompt Settings")
-        settings_layout = QGridLayout()
+        # Format components editor
+        format_group = QGroupBox("Prompt Format Components")
+        format_group_layout = QVBoxLayout()
+
+        # Toolbar for format components
+        format_toolbar = QHBoxLayout()
+        add_module_btn = QPushButton("➕ Add Module")
+        add_module_btn.clicked.connect(self._add_format_module)
+        add_transition_btn = QPushButton("🎨 Add Color Transition")
+        add_transition_btn.clicked.connect(self._add_format_transition)
+        add_linebreak_btn = QPushButton("↵ Add Line Break")
+        add_linebreak_btn.clicked.connect(self._add_format_linebreak)
+
+        format_toolbar.addWidget(add_module_btn)
+        format_toolbar.addWidget(add_transition_btn)
+        format_toolbar.addWidget(add_linebreak_btn)
+        format_toolbar.addStretch()
+        format_group_layout.addLayout(format_toolbar)
+
+        # Scrollable list of format components
+        self.format_components_container = QWidget()
+        self.format_components_layout = QVBoxLayout(self.format_components_container)
+        self.format_components_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.format_components_layout.setSpacing(5)
+
+        format_scroll = QScrollArea()
+        format_scroll.setWidgetResizable(True)
+        format_scroll.setWidget(self.format_components_container)
+        format_scroll.setMinimumHeight(300)
+        format_scroll.setMaximumHeight(400)
+        format_group_layout.addWidget(format_scroll)
+
+        format_group.setLayout(format_group_layout)
+        panel_layout.addWidget(format_group)
+
+        # Store format component widgets
+        self.format_component_widgets = []
+
+        # Other prompt settings
+        other_settings_group = QGroupBox("Other Prompt Settings")
+        other_settings_layout = QGridLayout()
         row = 0
 
-        # Format field with color picker (multi-line)
-        settings_layout.addWidget(QLabel("Format:"), row, 0, Qt.AlignmentFlag.AlignTop)
-        format_container = QWidget()
-        format_v_layout = QVBoxLayout(format_container)
-        format_v_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.prompt_format_input = QTextEdit()
-        self.prompt_format_input.setPlaceholderText("e.g., '$all' or custom module order")
-        self.prompt_format_input.setToolTip("Define the order and format of prompt modules")
-        self.prompt_format_input.setMaximumHeight(150)
-        format_v_layout.addWidget(self.prompt_format_input)
-
-        format_btn_layout = QHBoxLayout()
-        format_color_btn = QPushButton("🎨")
-        format_color_btn.setMaximumWidth(40)
-        format_color_btn.setToolTip("Pick color for format")
-        format_color_btn.clicked.connect(lambda: self._open_smart_color_picker(self.prompt_format_input))
-        format_btn_layout.addWidget(format_color_btn)
-        format_btn_layout.addStretch()
-        format_v_layout.addLayout(format_btn_layout)
-
-        settings_layout.addWidget(format_container, row, 1)
-        row += 1
-
         # Right format field with color picker
-        settings_layout.addWidget(QLabel("Right Format:"), row, 0)
+        other_settings_layout.addWidget(QLabel("Right Format:"), row, 0)
         right_format_container = QWidget()
         right_format_h_layout = QHBoxLayout(right_format_container)
         right_format_h_layout.setContentsMargins(0, 0, 0, 0)
 
         self.prompt_right_format_input = QLineEdit()
-        self.prompt_right_format_input.setPlaceholderText("Right-aligned modules (e.g., '[$time](bold white)')")
+        self.prompt_right_format_input.setPlaceholderText("Right-aligned modules (e.g., '$status$memory_usage')")
         self.prompt_right_format_input.setToolTip("Define right-aligned prompt segment")
         right_format_h_layout.addWidget(self.prompt_right_format_input, stretch=3)
 
@@ -545,17 +559,17 @@ class StarshipConfigurator(QMainWindow):
         right_color_btn.clicked.connect(lambda: self._open_smart_color_picker(self.prompt_right_format_input))
         right_format_h_layout.addWidget(right_color_btn)
 
-        settings_layout.addWidget(right_format_container, row, 1)
+        other_settings_layout.addWidget(right_format_container, row, 1)
         row += 1
 
         # Continuation prompt field with color picker
-        settings_layout.addWidget(QLabel("Continuation Prompt:"), row, 0)
+        other_settings_layout.addWidget(QLabel("Continuation Prompt:"), row, 0)
         continuation_container = QWidget()
         continuation_h_layout = QHBoxLayout(continuation_container)
         continuation_h_layout.setContentsMargins(0, 0, 0, 0)
 
         self.prompt_continuation_input = QLineEdit()
-        self.prompt_continuation_input.setPlaceholderText("[∙](bright-black) ")
+        self.prompt_continuation_input.setPlaceholderText("[∙](bright-black)")
         self.prompt_continuation_input.setToolTip("Prompt shown for multi-line commands")
         continuation_h_layout.addWidget(self.prompt_continuation_input, stretch=3)
 
@@ -571,11 +585,11 @@ class StarshipConfigurator(QMainWindow):
         continuation_emoji_btn.clicked.connect(lambda: self._open_emoji_picker(self.prompt_continuation_input))
         continuation_h_layout.addWidget(continuation_emoji_btn)
 
-        settings_layout.addWidget(continuation_container, row, 1)
+        other_settings_layout.addWidget(continuation_container, row, 1)
         row += 1
 
-        settings_group.setLayout(settings_layout)
-        panel_layout.addWidget(settings_group)
+        other_settings_group.setLayout(other_settings_layout)
+        panel_layout.addWidget(other_settings_group)
 
         # Help text
         help_label = QLabel('💡 <a href="https://starship.rs/config/#prompt">View prompt configuration documentation</a>')
@@ -1057,6 +1071,228 @@ accent = "#ff0000"
             target_line_edit.setText(emoji if not current_text else f"{emoji} {current_text}")
         dialog.accept()
 
+    # Format component management functions
+    def _add_format_module(self):
+        """Add a module reference to format components."""
+        # Create a dialog to select module
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QComboBox, QDialogButtonBox
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Add Module to Format")
+        layout = QVBoxLayout(dialog)
+
+        combo = QComboBox()
+        combo.addItems(STARSHIP_MODULES)
+        layout.addWidget(QLabel("Select module:"))
+        layout.addWidget(combo)
+
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            module_name = combo.currentText()
+            self._create_format_component_row('module', f'${module_name}')
+
+    def _add_format_transition(self):
+        """Add a color transition to format components."""
+        self._create_format_component_row('transition', '[](fg:#ffffff bg:#000000)')
+
+    def _add_format_linebreak(self):
+        """Add a line break to format components."""
+        self._create_format_component_row('linebreak', '$line_break')
+
+    def _create_format_component_row(self, component_type: str, component_value: str):
+        """Create a row widget for a format component."""
+        row_widget = QWidget()
+        row_layout = QHBoxLayout(row_widget)
+        row_layout.setContentsMargins(5, 2, 5, 2)
+        row_layout.setSpacing(5)
+
+        # Store component data
+        row_widget.component_type = component_type
+        row_widget.component_value = component_value
+
+        # Enable checkbox
+        enable_check = QCheckBox()
+        enable_check.setChecked(True)
+        enable_check.setToolTip("Enable/disable this component")
+        row_layout.addWidget(enable_check)
+        row_widget.enable_check = enable_check
+
+        # Component label/editor
+        if component_type == 'module':
+            # Module name (not editable, just display)
+            label = QLabel(component_value)
+            label.setStyleSheet("font-family: monospace; padding: 3px;")
+            label.setMinimumWidth(150)
+            row_layout.addWidget(label)
+            row_widget.value_widget = label
+
+        elif component_type == 'transition':
+            # Parse fg and bg colors
+            import re
+            fg_match = re.search(r'fg:(#[0-9a-fA-F]{6}|[a-z]+)', component_value)
+            bg_match = re.search(r'bg:(#[0-9a-fA-F]{6}|[a-z]+)', component_value)
+
+            # Text content in brackets
+            text_match = re.search(r'\[([^\]]*)\]', component_value)
+            text_content = text_match.group(1) if text_match else ''
+
+            # Text input
+            text_input = QLineEdit(text_content)
+            text_input.setPlaceholderText("")
+            text_input.setMaximumWidth(60)
+            text_input.setToolTip("Text to display (usually empty for transitions)")
+            row_layout.addWidget(QLabel("Text:"))
+            row_layout.addWidget(text_input)
+            row_widget.text_input = text_input
+
+            # FG color
+            fg_value = fg_match.group(1) if fg_match else '#ffffff'
+            fg_input = QLineEdit(fg_value)
+            fg_input.setMaximumWidth(100)
+            row_layout.addWidget(QLabel("FG:"))
+            row_layout.addWidget(fg_input)
+
+            fg_picker_btn = QPushButton("🎨")
+            fg_picker_btn.setMaximumWidth(35)
+            fg_picker_btn.clicked.connect(lambda: self._pick_color_for_input(fg_input))
+            row_layout.addWidget(fg_picker_btn)
+            row_widget.fg_input = fg_input
+
+            # BG color
+            bg_value = bg_match.group(1) if bg_match else '#000000'
+            bg_input = QLineEdit(bg_value)
+            bg_input.setMaximumWidth(100)
+            row_layout.addWidget(QLabel("BG:"))
+            row_layout.addWidget(bg_input)
+
+            bg_picker_btn = QPushButton("🎨")
+            bg_picker_btn.setMaximumWidth(35)
+            bg_picker_btn.clicked.connect(lambda: self._pick_color_for_input(bg_input))
+            row_layout.addWidget(bg_picker_btn)
+            row_widget.bg_input = bg_input
+
+        elif component_type == 'linebreak':
+            label = QLabel("$line_break")
+            label.setStyleSheet("font-family: monospace; font-style: italic; padding: 3px;")
+            row_layout.addWidget(label)
+            row_widget.value_widget = label
+
+        row_layout.addStretch()
+
+        # Up button
+        up_btn = QPushButton("↑")
+        up_btn.setMaximumWidth(30)
+        up_btn.setToolTip("Move up")
+        up_btn.clicked.connect(lambda: self._move_format_component_up(row_widget))
+        row_layout.addWidget(up_btn)
+
+        # Down button
+        down_btn = QPushButton("↓")
+        down_btn.setMaximumWidth(30)
+        down_btn.setToolTip("Move down")
+        down_btn.clicked.connect(lambda: self._move_format_component_down(row_widget))
+        row_layout.addWidget(down_btn)
+
+        # Delete button
+        delete_btn = QPushButton("🗑️")
+        delete_btn.setMaximumWidth(35)
+        delete_btn.setToolTip("Delete this component")
+        delete_btn.clicked.connect(lambda: self._delete_format_component(row_widget))
+        row_layout.addWidget(delete_btn)
+
+        # Add to layout and tracking list
+        self.format_components_layout.addWidget(row_widget)
+        self.format_component_widgets.append(row_widget)
+
+    def _move_format_component_up(self, row_widget):
+        """Move a format component up in the list."""
+        index = self.format_component_widgets.index(row_widget)
+        if index > 0:
+            # Remove from layout and list
+            self.format_components_layout.removeWidget(row_widget)
+            self.format_component_widgets.pop(index)
+            # Insert at new position
+            new_index = index - 1
+            self.format_components_layout.insertWidget(new_index, row_widget)
+            self.format_component_widgets.insert(new_index, row_widget)
+
+    def _move_format_component_down(self, row_widget):
+        """Move a format component down in the list."""
+        index = self.format_component_widgets.index(row_widget)
+        if index < len(self.format_component_widgets) - 1:
+            # Remove from layout and list
+            self.format_components_layout.removeWidget(row_widget)
+            self.format_component_widgets.pop(index)
+            # Insert at new position
+            new_index = index + 1
+            self.format_components_layout.insertWidget(new_index, row_widget)
+            self.format_component_widgets.insert(new_index, row_widget)
+
+    def _delete_format_component(self, row_widget):
+        """Delete a format component from the list."""
+        self.format_components_layout.removeWidget(row_widget)
+        self.format_component_widgets.remove(row_widget)
+        row_widget.deleteLater()
+
+    def _pick_color_for_input(self, input_widget: QLineEdit):
+        """Simple color picker for input field."""
+        color = QColorDialog.getColor()
+        if color.isValid():
+            input_widget.setText(color.name())
+
+    def _parse_format_string_to_components(self, format_string: str):
+        """Parse format string and populate component list."""
+        if not format_string:
+            return
+
+        import re
+
+        # Clear existing components
+        for widget in self.format_component_widgets[:]:
+            self._delete_format_component(widget)
+
+        # Find all tokens: $module_name, [text](style), $line_break, etc.
+        # Pattern matches: $word or [...](...)
+        pattern = r'(\$[a-z_]+|\[[^\]]*\]\([^\)]+\))'
+        tokens = re.findall(pattern, format_string)
+
+        for token in tokens:
+            if token.startswith('$'):
+                # Module or special variable
+                if token == '$line_break':
+                    self._create_format_component_row('linebreak', token)
+                else:
+                    self._create_format_component_row('module', token)
+            elif token.startswith('['):
+                # Color transition or styled text
+                self._create_format_component_row('transition', token)
+
+    def _reconstruct_format_string_from_components(self) -> str:
+        """Build format string from component widgets."""
+        parts = []
+
+        for row_widget in self.format_component_widgets:
+            if not row_widget.enable_check.isChecked():
+                continue  # Skip disabled components
+
+            component_type = row_widget.component_type
+
+            if component_type == 'module' or component_type == 'linebreak':
+                # Use the stored value
+                parts.append(row_widget.component_value)
+
+            elif component_type == 'transition':
+                # Reconstruct from widgets
+                text = row_widget.text_input.text()
+                fg = row_widget.fg_input.text()
+                bg = row_widget.bg_input.text()
+                parts.append(f'[{text}](fg:{fg} bg:{bg})')
+
+        return ''.join(parts)
+
     def _create_widget_for_schema(self, prop_schema: Dict) -> QWidget:
         """Create appropriate widget based on JSON schema property type."""
         prop_type = prop_schema.get('type', 'string')
@@ -1265,8 +1501,7 @@ accent = "#ff0000"
         # Prompt configuration
         if 'format' in self.config_data:
             format_value = str(self.config_data['format'])
-            formatted_display = self._format_prompt_string_for_display(format_value)
-            self.prompt_format_input.setPlainText(formatted_display)
+            self._parse_format_string_to_components(format_value)
         if 'right_format' in self.config_data:
             self.prompt_right_format_input.setText(str(self.config_data['right_format']))
         if 'continuation_prompt' in self.config_data:
@@ -1553,10 +1788,8 @@ accent = "#ff0000"
         self.config_data['follow_symlinks'] = self.follow_symlinks_check.isChecked()
 
         # Prompt configuration
-        prompt_format_display = self.prompt_format_input.toPlainText().strip()
-        if prompt_format_display:
-            # Convert from display format (with newlines/backslashes) to save format (single line)
-            prompt_format = self._format_prompt_string_for_save(prompt_format_display)
+        prompt_format = self._reconstruct_format_string_from_components()
+        if prompt_format:
             self.config_data['format'] = prompt_format
         elif 'format' in self.config_data:
             del self.config_data['format']
