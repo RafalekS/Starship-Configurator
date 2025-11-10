@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
     QListWidget, QStackedWidget, QLineEdit, QCheckBox, QPushButton,
     QTextEdit, QLabel, QFileDialog, QMessageBox, QGridLayout,
     QScrollArea, QGroupBox, QComboBox, QSpinBox, QListWidgetItem,
-    QToolBar, QStatusBar, QSplitter, QTabWidget
+    QToolBar, QStatusBar, QSplitter, QTabWidget, QColorDialog
 )
 from PyQt6.QtCore import Qt, QSize, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QIcon, QAction
@@ -476,26 +476,16 @@ class StarshipConfigurator(QMainWindow):
         title.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px;")
         layout.addWidget(title)
 
-        # Description section (if available from schema)
-        if description:
-            desc_group = QGroupBox("📖 Description")
-            desc_layout = QVBoxLayout()
-            desc_label = QLabel(description)
-            desc_label.setWordWrap(True)
-            desc_label.setStyleSheet("padding: 5px;")
-            desc_layout.addWidget(desc_label)
-            desc_group.setLayout(desc_layout)
-            layout.addWidget(desc_group)
-        else:
-            # Fallback description if schema doesn't provide one
-            desc_group = QGroupBox("📖 About This Module")
-            desc_layout = QVBoxLayout()
-            desc_label = QLabel(f"The '{module_name}' module displays information in your Starship prompt.")
-            desc_label.setWordWrap(True)
-            desc_label.setStyleSheet("padding: 5px;")
-            desc_layout.addWidget(desc_label)
-            desc_group.setLayout(desc_layout)
-            layout.addWidget(desc_group)
+        # Description section - use example as description
+        desc_text = description if description else self._get_module_example(module_name).split('\nExample:')[0]
+        desc_group = QGroupBox("📖 Description")
+        desc_layout = QVBoxLayout()
+        desc_label = QLabel(desc_text)
+        desc_label.setWordWrap(True)
+        desc_label.setStyleSheet("padding: 5px;")
+        desc_layout.addWidget(desc_label)
+        desc_group.setLayout(desc_layout)
+        layout.addWidget(desc_group)
 
         # Add example/usage information
         example_group = QGroupBox("💡 Example & Usage")
@@ -530,11 +520,18 @@ class StarshipConfigurator(QMainWindow):
         self.module_widgets[module_name]['fields']['format'] = format_input
         row += 1
 
-        # Style field
+        # Style field with color picker
         common_layout.addWidget(QLabel("Style:"), row, 0)
+        style_container = QWidget()
+        style_h_layout = QHBoxLayout(style_container)
+        style_h_layout.setContentsMargins(0, 0, 0, 0)
         style_input = QLineEdit()
         style_input.setPlaceholderText("e.g., 'bold red'")
-        common_layout.addWidget(style_input, row, 1)
+        style_h_layout.addWidget(style_input, stretch=3)
+        color_btn = QPushButton("🎨 Pick Color")
+        color_btn.clicked.connect(lambda: self._open_color_picker(style_input))
+        style_h_layout.addWidget(color_btn, stretch=1)
+        common_layout.addWidget(style_container, row, 1)
         self.module_widgets[module_name]['fields']['style'] = style_input
         row += 1
 
@@ -588,32 +585,60 @@ class StarshipConfigurator(QMainWindow):
     def _get_module_example(self, module_name: str) -> str:
         """Get example and usage information for a module."""
         examples = {
-            'docker_context': 'Shows the active Docker context.\nExample: 🐳 default\nUseful when working with multiple Docker environments.',
-            'git_branch': 'Displays the current Git branch.\nExample: 🌱 main | ⎇ feature/new-ui\nShows branch name with custom symbols.',
-            'git_status': 'Shows Git repository status (changes, staged files).\nExample: [+3 ~2 -1]\nIndicates added, modified, and deleted files.',
-            'python': 'Shows Python version and virtual environment.\nExample: 🐍 v3.11.2 (.venv)\nDisplays when in a Python project.',
-            'nodejs': 'Displays Node.js version.\nExample: ⬢ v20.10.0\nShows when package.json is detected.',
-            'rust': 'Shows Rust version via rustc.\nExample: 🦀 v1.75.0\nDisplays in Rust projects.',
-            'golang': 'Displays Go version.\nExample: 🐹 v1.21.5\nShows when go.mod is present.',
-            'java': 'Shows Java version.\nExample: ☕ v21.0.1\nDisplays in Java projects.',
-            'kubernetes': 'Shows current Kubernetes context and namespace.\nExample: ☸ production/default\nUseful for kubectl users.',
-            'aws': 'Displays active AWS profile and region.\nExample: ☁️ us-east-1 (prod)\nShows AWS CLI configuration.',
-            'gcloud': 'Shows Google Cloud project and region.\nExample: ☁️ my-project (us-central1)\nFor GCP users.',
-            'directory': 'Shows current working directory path.\nExample: 📁 ~/projects/app\nCustomizable truncation and formatting.',
-            'character': 'The prompt character (changes color on error).\nExample: ❯ (green) or ❯ (red)\nIndicates last command success/failure.',
-            'cmd_duration': 'Shows how long the last command took.\nExample: 🕙 2.3s\nDisplayed when above threshold.',
-            'time': 'Displays current time.\nExample: 🕙 15:45:32\nCustomizable time format.',
-            'battery': 'Shows battery level and status.\nExample: 🔋 85%\nDisplayed when below threshold.',
-            'memory_usage': 'Shows system memory usage.\nExample: 💾 4.2 GB / 16 GB\nDisplays RAM consumption.',
-            'status': 'Shows exit code of last command.\nExample: ✘ 127\nOnly shown on errors.',
-            'terraform': 'Shows Terraform workspace and version.\nExample: 💠 workspace: default\nFor Terraform users.',
-            'container': 'Indicates if running inside a container.\nExample: 📦 container\nDetects Docker/LXC/Podman.',
+            'aws': 'Shows the current AWS region and profile with expiration timer for temporary credentials.\nExample: ☁️ us-east-1 (prod)\nDisplays AWS CLI configuration.',
+            'azure': 'Displays the current Azure Subscription based on the active configuration.\nExample: ☁️ my-subscription\nUseful for Azure CLI users.',
+            'battery': 'Shows device battery charge level and current charging status.\nExample: 🔋 85% | ⚡ charging\nDisplayed when below threshold.',
+            'character': 'Displays a character (usually an arrow) indicating command success or failure.\nExample: ❯ (green) or ❯ (red)\nChanges color based on last command status.',
+            'cmd_duration': 'Shows how long the last command took to execute.\nExample: 🕙 2.3s\nDisplayed when execution time exceeds threshold.',
+            'container': 'Displays a symbol and container name when inside a container.\nExample: 📦 container\nDetects Docker/LXC/Podman environments.',
+            'directory': 'Displays the path to your current directory, truncated to parent folders.\nExample: 📁 ~/projects/app\nCustomizable truncation and formatting.',
+            'docker_context': 'Shows the currently active Docker context.\nExample: 🐳 default\nUseful when working with multiple Docker environments.',
+            'dotnet': 'Shows the relevant version of the .NET Core SDK for current directory.\nExample: •NET v8.0.100\nDisplayed in .NET projects.',
+            'git_branch': 'Shows the active branch of the repository in current directory.\nExample: 🌱 main | ⎇ feature/new-ui\nDisplays current Git branch name.',
+            'git_commit': 'Shows the current commit hash and tag (if any) of repository.\nExample: (7f3a2b1) | 🏷️ v1.0.0\nDisplayed in detached HEAD state.',
+            'git_state': 'Shows in directories with git operations in progress (rebase, merge, etc).\nExample: (REBASING 2/10)\nIndicates active Git operations.',
+            'git_status': 'Shows symbols representing the state of repository in current directory.\nExample: [+3 ~2 -1 ⇡2]\nIndicates added, modified, deleted files and commits ahead.',
+            'git_metrics': 'Shows the number of added and deleted lines in current repository.\nExample: +420 -69\nDisplays line changes in Git repo.',
+            'golang': 'Shows the currently installed version of Go.\nExample: 🐹 v1.21.5\nDisplayed when go.mod is present.',
+            'hostname': 'Shows the system hostname.\nExample: 🌐 mycomputer\nDisplayed in SSH sessions by default.',
+            'java': 'Shows the currently installed version of Java.\nExample: ☕ v21.0.1\nDisplayed in Java projects.',
+            'jobs': 'Shows the current number of jobs running.\nExample: ✦2\nDisplays background job count.',
+            'kubernetes': 'Displays the current Kubernetes context name and namespace.\nExample: ☸ production/default\nUseful for kubectl users.',
+            'lua': 'Shows the currently installed version of Lua.\nExample: 🌙 v5.4.4\nDisplayed when .lua files are detected.',
+            'memory_usage': 'Displays system memory consumption and available memory.\nExample: 💾 4.2 GB / 16 GB\nShows RAM usage percentage.',
+            'nodejs': 'Displays Node.js version for JavaScript/Node projects.\nExample: ⬢ v20.10.0\nShown when package.json is detected.',
+            'package': 'Shows the current project version from package metadata files.\nExample: 📦 v1.2.3\nReads from package.json, Cargo.toml, etc.',
+            'php': 'Shows the currently installed PHP version.\nExample: 🐘 v8.2.0\nDisplayed in PHP projects.',
+            'python': 'Displays Python version and virtual environment status.\nExample: 🐍 v3.11.2 (.venv)\nShown when in a Python project.',
+            'ruby': 'Shows Ruby version for Ruby projects.\nExample: 💎 v3.2.0\nDisplayed when Gemfile is detected.',
+            'rust': 'Displays Rust toolchain version and project information.\nExample: 🦀 v1.75.0\nShown in Rust projects with Cargo.toml.',
+            'scala': 'Shows Scala version for JVM-based functional programming.\nExample: 🆂 v3.3.1\nDisplayed when .scala files or build.sbt are detected.',
+            'shell': 'Displays the current shell name and version.\nExample: 🐚 bash\nShows active shell indicator.',
+            'status': 'Displays the exit status code of the last executed command.\nExample: ✘ 127\nOnly shown when command fails.',
+            'sudo': 'Shows a symbol when sudo credentials are cached.\nExample: 🧙 \nIndicates active sudo session.',
+            'terraform': 'Shows Terraform workspace and version for infrastructure automation.\nExample: 💠 workspace: default\nUseful for Terraform users.',
+            'time': 'Displays the current time in a customizable format.\nExample: 🕙 15:45:32\nShows current system time.',
+            'username': 'Displays the current user account name.\nExample: rafal@hostname\nShown by default for root user.',
         }
 
         return examples.get(module_name,
-            f"Configures the '{module_name}' module.\n"
-            f"See documentation: https://starship.rs/config/#{module_name}"
+            f"Configures the '{module_name}' module for your Starship prompt.\n"
+            f"See full documentation: https://starship.rs/config/#{module_name}"
         )
+
+    def _open_color_picker(self, target_line_edit: QLineEdit):
+        """Opens a color picker dialog and inserts the color into the style field."""
+        color = QColorDialog.getColor()
+        if color.isValid():
+            # Get the color hex value
+            color_hex = color.name()  # Returns hex like #ff0000
+            # Insert at cursor or append
+            current_text = target_line_edit.text().strip()
+            if current_text:
+                # Append with space
+                target_line_edit.setText(f"{current_text} {color_hex}")
+            else:
+                target_line_edit.setText(color_hex)
 
     def _create_widget_for_schema(self, prop_schema: Dict) -> QWidget:
         """Create appropriate widget based on JSON schema property type."""
