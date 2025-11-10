@@ -187,19 +187,23 @@ class StarshipConfigurator(QMainWindow):
         global_tab = self._create_global_settings_tab()
         self.main_tabs.addTab(global_tab, "⚙️ Global Settings")
 
-        # === TAB 3: Custom Modules ===
+        # === TAB 3: Prompt Configuration ===
+        prompt_tab = self._create_prompt_config_tab()
+        self.main_tabs.addTab(prompt_tab, "📋 Prompt")
+
+        # === TAB 4: Custom Modules ===
         custom_tab = self._create_custom_modules_tab()
         self.main_tabs.addTab(custom_tab, "🛠️ Custom Modules")
 
-        # === TAB 4: Palettes ===
+        # === TAB 5: Palettes ===
         palettes_tab = self._create_palettes_tab()
         self.main_tabs.addTab(palettes_tab, "🎨 Palettes")
 
-        # === TAB 5: Preview ===
+        # === TAB 6: Preview ===
         preview_tab = self._create_preview_tab()
         self.main_tabs.addTab(preview_tab, "✨ Preview")
 
-        # === TAB 6: TOML Editor ===
+        # === TAB 7: TOML Editor ===
         toml_tab = self._create_toml_editor_tab()
         self.main_tabs.addTab(toml_tab, "📝 TOML Editor")
 
@@ -302,35 +306,6 @@ class StarshipConfigurator(QMainWindow):
 
         general_group.setLayout(general_layout)
         panel_layout.addWidget(general_group)
-
-        # === Prompt Configuration ===
-        prompt_group = QGroupBox("Prompt Configuration")
-        prompt_layout = QGridLayout()
-        row = 0
-
-        prompt_layout.addWidget(QLabel("Format:"), row, 0)
-        self.prompt_format_input = QLineEdit()
-        self.prompt_format_input.setPlaceholderText("Custom prompt format (leave empty for default)")
-        self.prompt_format_input.setToolTip("Define the format of the entire prompt. See: https://starship.rs/config/#prompt")
-        prompt_layout.addWidget(self.prompt_format_input, row, 1)
-        row += 1
-
-        prompt_layout.addWidget(QLabel("Right Format:"), row, 0)
-        self.prompt_right_format_input = QLineEdit()
-        self.prompt_right_format_input.setPlaceholderText("Right-aligned prompt format")
-        self.prompt_right_format_input.setToolTip("Enable a right-aligned prompt segment")
-        prompt_layout.addWidget(self.prompt_right_format_input, row, 1)
-        row += 1
-
-        prompt_layout.addWidget(QLabel("Continuation Prompt:"), row, 0)
-        self.prompt_continuation_input = QLineEdit()
-        self.prompt_continuation_input.setPlaceholderText("Prompt for continuation lines")
-        self.prompt_continuation_input.setToolTip("The prompt for continuation lines (default: '[∙](bright-black) ')")
-        prompt_layout.addWidget(self.prompt_continuation_input, row, 1)
-        row += 1
-
-        prompt_group.setLayout(prompt_layout)
-        panel_layout.addWidget(prompt_group)
 
         # === UI Settings ===
         ui_group = QGroupBox("User Interface Settings")
@@ -496,6 +471,116 @@ class StarshipConfigurator(QMainWindow):
         button_layout.addStretch()
 
         layout.addLayout(button_layout)
+
+        return tab
+
+    def _create_prompt_config_tab(self) -> QWidget:
+        """Create dedicated prompt configuration tab."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(10, 10, 10, 10)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+
+        panel = QWidget()
+        panel_layout = QVBoxLayout(panel)
+        panel_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        # Title
+        title = QLabel("📋 Prompt Configuration")
+        title.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px;")
+        panel_layout.addWidget(title)
+
+        # Description
+        desc = QLabel("Configure the overall prompt format and behavior.\nDocs: https://starship.rs/config/#prompt")
+        desc.setWordWrap(True)
+        desc.setStyleSheet("padding: 5px; color: #666;")
+        panel_layout.addWidget(desc)
+
+        # Settings group
+        settings_group = QGroupBox("Prompt Settings")
+        settings_layout = QGridLayout()
+        row = 0
+
+        # Format field with color picker
+        settings_layout.addWidget(QLabel("Format:"), row, 0)
+        format_container = QWidget()
+        format_h_layout = QHBoxLayout(format_container)
+        format_h_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.prompt_format_input = QLineEdit()
+        self.prompt_format_input.setPlaceholderText("e.g., '$all' or custom module order")
+        self.prompt_format_input.setToolTip("Define the order and format of prompt modules")
+        format_h_layout.addWidget(self.prompt_format_input, stretch=3)
+
+        format_color_btn = QPushButton("🎨")
+        format_color_btn.setMaximumWidth(40)
+        format_color_btn.setToolTip("Pick color for format")
+        format_color_btn.clicked.connect(lambda: self._open_smart_color_picker(self.prompt_format_input))
+        format_h_layout.addWidget(format_color_btn)
+
+        settings_layout.addWidget(format_container, row, 1)
+        row += 1
+
+        # Right format field with color picker
+        settings_layout.addWidget(QLabel("Right Format:"), row, 0)
+        right_format_container = QWidget()
+        right_format_h_layout = QHBoxLayout(right_format_container)
+        right_format_h_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.prompt_right_format_input = QLineEdit()
+        self.prompt_right_format_input.setPlaceholderText("Right-aligned modules (e.g., '[$time](bold white)')")
+        self.prompt_right_format_input.setToolTip("Define right-aligned prompt segment")
+        right_format_h_layout.addWidget(self.prompt_right_format_input, stretch=3)
+
+        right_color_btn = QPushButton("🎨")
+        right_color_btn.setMaximumWidth(40)
+        right_color_btn.setToolTip("Pick color")
+        right_color_btn.clicked.connect(lambda: self._open_smart_color_picker(self.prompt_right_format_input))
+        right_format_h_layout.addWidget(right_color_btn)
+
+        settings_layout.addWidget(right_format_container, row, 1)
+        row += 1
+
+        # Continuation prompt field with color picker
+        settings_layout.addWidget(QLabel("Continuation Prompt:"), row, 0)
+        continuation_container = QWidget()
+        continuation_h_layout = QHBoxLayout(continuation_container)
+        continuation_h_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.prompt_continuation_input = QLineEdit()
+        self.prompt_continuation_input.setPlaceholderText("[∙](bright-black) ")
+        self.prompt_continuation_input.setToolTip("Prompt shown for multi-line commands")
+        continuation_h_layout.addWidget(self.prompt_continuation_input, stretch=3)
+
+        continuation_color_btn = QPushButton("🎨")
+        continuation_color_btn.setMaximumWidth(40)
+        continuation_color_btn.setToolTip("Pick color")
+        continuation_color_btn.clicked.connect(lambda: self._open_smart_color_picker(self.prompt_continuation_input))
+        continuation_h_layout.addWidget(continuation_color_btn)
+
+        continuation_emoji_btn = QPushButton("😀")
+        continuation_emoji_btn.setMaximumWidth(40)
+        continuation_emoji_btn.setToolTip("Pick symbol")
+        continuation_emoji_btn.clicked.connect(lambda: self._open_emoji_picker(self.prompt_continuation_input))
+        continuation_h_layout.addWidget(continuation_emoji_btn)
+
+        settings_layout.addWidget(continuation_container, row, 1)
+        row += 1
+
+        settings_group.setLayout(settings_layout)
+        panel_layout.addWidget(settings_group)
+
+        # Help text
+        help_label = QLabel('💡 <a href="https://starship.rs/config/#prompt">View prompt configuration documentation</a>')
+        help_label.setOpenExternalLinks(True)
+        help_label.setStyleSheet("padding: 10px; color: #0066cc;")
+        panel_layout.addWidget(help_label)
+
+        scroll.setWidget(panel)
+        layout.addWidget(scroll)
 
         return tab
 
@@ -1128,39 +1213,65 @@ accent = "#ff0000"
 
     def _load_custom_modules_from_config(self):
         """Extract custom.* and env_var.* sections from config."""
+        print("🔍 DEBUG: _load_custom_modules_from_config() called")
         if not self.config_data:
+            print("🔍 DEBUG: No config_data, returning")
             return
 
+        print(f"🔍 DEBUG: Config keys: {list(self.config_data.keys())}")
         custom_sections = []
         for key in self.config_data.keys():
             if key.startswith('custom.') or key.startswith('env_var.'):
-                # Create a mini document with just this section
-                mini_doc = tomlkit.document()
-                mini_doc[key] = self.config_data[key]
-                # Get the TOML string representation
-                section_toml = mini_doc.as_string()
-                custom_sections.append(section_toml.strip())
+                print(f"🔍 DEBUG: Found custom/env_var key: {key}")
+                try:
+                    # Create a mini document with just this section
+                    mini_doc = tomlkit.document()
+                    mini_doc[key] = self.config_data[key]
+                    # Get the TOML string representation
+                    section_toml = mini_doc.as_string()
+                    print(f"🔍 DEBUG: Serialized {key} to {len(section_toml)} chars")
+                    custom_sections.append(section_toml.strip())
+                except Exception as e:
+                    print(f"🔍 DEBUG: Error serializing {key}: {e}")
 
+        print(f"🔍 DEBUG: Found {len(custom_sections)} custom sections")
         if custom_sections:
-            self.custom_modules_editor.setPlainText('\n\n'.join(custom_sections))
+            combined = '\n\n'.join(custom_sections)
+            print(f"🔍 DEBUG: Setting custom_modules_editor text ({len(combined)} chars)")
+            self.custom_modules_editor.setPlainText(combined)
+        else:
+            print("🔍 DEBUG: No custom sections found, editor will be empty")
 
     def _load_palettes_from_config(self):
         """Extract palettes.* sections from config."""
+        print("🔍 DEBUG: _load_palettes_from_config() called")
         if not self.config_data:
+            print("🔍 DEBUG: No config_data, returning")
             return
 
+        print(f"🔍 DEBUG: Config keys: {list(self.config_data.keys())}")
         palette_sections = []
         for key in self.config_data.keys():
             if key.startswith('palettes.'):
-                # Create a mini document with just this section
-                mini_doc = tomlkit.document()
-                mini_doc[key] = self.config_data[key]
-                # Get the TOML string representation
-                section_toml = mini_doc.as_string()
-                palette_sections.append(section_toml.strip())
+                print(f"🔍 DEBUG: Found palettes key: {key}")
+                try:
+                    # Create a mini document with just this section
+                    mini_doc = tomlkit.document()
+                    mini_doc[key] = self.config_data[key]
+                    # Get the TOML string representation
+                    section_toml = mini_doc.as_string()
+                    print(f"🔍 DEBUG: Serialized {key} to {len(section_toml)} chars")
+                    palette_sections.append(section_toml.strip())
+                except Exception as e:
+                    print(f"🔍 DEBUG: Error serializing {key}: {e}")
 
+        print(f"🔍 DEBUG: Found {len(palette_sections)} palette sections")
         if palette_sections:
-            self.palettes_editor.setPlainText('\n\n'.join(palette_sections))
+            combined = '\n\n'.join(palette_sections)
+            print(f"🔍 DEBUG: Setting palettes_editor text ({len(combined)} chars)")
+            self.palettes_editor.setPlainText(combined)
+        else:
+            print("🔍 DEBUG: No palette sections found, editor will be empty")
 
     def _update_full_editor(self):
         """Update the full TOML editor with current config."""
