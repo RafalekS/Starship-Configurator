@@ -664,9 +664,23 @@ class StarshipConfigurator(QMainWindow):
             return widget
         elif prop_type == 'integer':
             widget = QSpinBox()
-            widget.setRange(prop_schema.get('minimum', 0), prop_schema.get('maximum', 999999))
+            # QSpinBox uses 32-bit signed integers
+            SPINBOX_MIN = -2147483648
+            SPINBOX_MAX = 2147483647
+
+            # Clamp schema min/max to QSpinBox limits
+            schema_min = max(prop_schema.get('minimum', 0), SPINBOX_MIN)
+            schema_max = min(prop_schema.get('maximum', 999999), SPINBOX_MAX)
+
+            widget.setRange(schema_min, schema_max)
+
             if 'default' in prop_schema:
-                widget.setValue(prop_schema['default'])
+                default_val = prop_schema['default']
+                # Clamp default to widget range
+                clamped_default = max(schema_min, min(default_val, schema_max))
+                widget.setValue(clamped_default)
+                if clamped_default != default_val:
+                    print(f"🔍 DEBUG: Clamped default {default_val} to {clamped_default}")
             return widget
         elif prop_type == 'array':
             widget = QTextEdit()
