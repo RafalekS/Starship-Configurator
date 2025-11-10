@@ -507,74 +507,58 @@ class StarshipConfigurator(QMainWindow):
         # Store widgets for this module
         self.module_widgets[module_name] = {'enabled': enable_check, 'fields': {}}
 
-        # Common fields group
-        common_group = QGroupBox("Common Settings")
-        common_layout = QGridLayout()
-        row = 0
-
-        # Format field
-        common_layout.addWidget(QLabel("Format:"), row, 0)
-        format_input = QLineEdit()
-        format_input.setPlaceholderText("Custom format string...")
-        common_layout.addWidget(format_input, row, 1)
-        self.module_widgets[module_name]['fields']['format'] = format_input
-        row += 1
-
-        # Style field with color picker
-        common_layout.addWidget(QLabel("Style:"), row, 0)
-        style_container = QWidget()
-        style_h_layout = QHBoxLayout(style_container)
-        style_h_layout.setContentsMargins(0, 0, 0, 0)
-        style_input = QLineEdit()
-        style_input.setPlaceholderText("e.g., 'bold red'")
-        style_h_layout.addWidget(style_input, stretch=3)
-        color_btn = QPushButton("🎨 Pick Color")
-        color_btn.clicked.connect(lambda: self._open_color_picker(style_input))
-        print(f"🔍 DEBUG: Created '🎨 Pick Color' button for '{module_name}'")
-        style_h_layout.addWidget(color_btn, stretch=1)
-        common_layout.addWidget(style_container, row, 1)
-        self.module_widgets[module_name]['fields']['style'] = style_input
-        row += 1
-
-        # Disabled field
-        common_layout.addWidget(QLabel("Disabled:"), row, 0)
-        disabled_check = QCheckBox("Disable this module")
-        common_layout.addWidget(disabled_check, row, 1)
-        self.module_widgets[module_name]['fields']['disabled'] = disabled_check
-        row += 1
-
-        common_group.setLayout(common_layout)
-        layout.addWidget(common_group)
-
-        # Schema-based fields (if schema available)
+        # Schema-based fields - ALL module properties
         if schema_props:
-            print(f"🔍 DEBUG: Adding Module-Specific Settings section for '{module_name}'")
-            schema_group = QGroupBox("Module-Specific Settings")
-            schema_layout = QGridLayout()
-            schema_row = 0
+            print(f"🔍 DEBUG: Adding all settings for '{module_name}' ({len(schema_props)} properties)")
+            settings_group = QGroupBox("Module Settings")
+            settings_layout = QGridLayout()
+            settings_row = 0
 
-            # Add fields based on schema
+            # Add ALL fields from schema
             for prop_name, prop_schema in schema_props.items():
-                if prop_name in ['format', 'style', 'disabled']:
-                    continue  # Already handled above
-
                 label = QLabel(f"{prop_name.replace('_', ' ').title()}:")
-                schema_layout.addWidget(label, schema_row, 0)
+                settings_layout.addWidget(label, settings_row, 0)
+
+                # Check if this field is color-related
+                is_color_field = any(color_keyword in prop_name.lower()
+                                    for color_keyword in ['color', 'style', 'fg', 'bg'])
 
                 # Create appropriate widget based on type
-                widget = self._create_widget_for_schema(prop_schema)
-                schema_layout.addWidget(widget, schema_row, 1)
-                self.module_widgets[module_name]['fields'][prop_name] = widget
-                schema_row += 1
+                if is_color_field and prop_schema.get('type') == 'string':
+                    # Create container with color picker for color fields
+                    field_container = QWidget()
+                    field_h_layout = QHBoxLayout(field_container)
+                    field_h_layout.setContentsMargins(0, 0, 0, 0)
 
-                if schema_row > 10:  # Limit fields to avoid overwhelming UI
-                    break
+                    widget = QLineEdit()
+                    if 'default' in prop_schema:
+                        widget.setText(str(prop_schema['default']))
+                    if 'description' in prop_schema:
+                        widget.setPlaceholderText(prop_schema['description'][:50] + "...")
 
-            print(f"🔍 DEBUG: Added {schema_row} module-specific fields for '{module_name}'")
-            schema_group.setLayout(schema_layout)
-            layout.addWidget(schema_group)
+                    field_h_layout.addWidget(widget, stretch=3)
+
+                    color_btn = QPushButton("🎨")
+                    color_btn.setMaximumWidth(40)
+                    color_btn.setToolTip("Pick color")
+                    color_btn.clicked.connect(lambda checked, w=widget: self._open_color_picker(w))
+                    field_h_layout.addWidget(color_btn)
+
+                    settings_layout.addWidget(field_container, settings_row, 1)
+                    self.module_widgets[module_name]['fields'][prop_name] = widget
+                else:
+                    # Regular widget without color picker
+                    widget = self._create_widget_for_schema(prop_schema)
+                    settings_layout.addWidget(widget, settings_row, 1)
+                    self.module_widgets[module_name]['fields'][prop_name] = widget
+
+                settings_row += 1
+
+            print(f"🔍 DEBUG: Added {settings_row} fields for '{module_name}'")
+            settings_group.setLayout(settings_layout)
+            layout.addWidget(settings_group)
         else:
-            print(f"🔍 DEBUG: No schema_props for '{module_name}' - skipping Module-Specific Settings")
+            print(f"🔍 DEBUG: No schema_props for '{module_name}' - schema may not be loaded")
 
         # Help text
         help_label = QLabel(f'💡 <a href="https://starship.rs/config/#{module_name}">View {module_name} documentation</a>')
