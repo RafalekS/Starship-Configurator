@@ -632,17 +632,25 @@ class StarshipConfigurator(QMainWindow):
         )
 
     def _open_color_picker(self, target_line_edit: QLineEdit):
-        """Opens a color picker dialog and inserts the color into the style field."""
+        """Opens a color picker dialog and replaces/adds the color in the style field."""
         color = QColorDialog.getColor()
         if color.isValid():
-            # Get the color hex value
             color_hex = color.name()  # Returns hex like #ff0000
-            # Insert at cursor or append
             current_text = target_line_edit.text().strip()
-            if current_text:
-                # Append with space
+
+            # Replace existing color (hex format) or append if no color exists
+            import re
+            # Match hex colors like #ff0000
+            hex_pattern = r'#[0-9a-fA-F]{6}\b'
+            if re.search(hex_pattern, current_text):
+                # Replace first hex color found
+                new_text = re.sub(hex_pattern, color_hex, current_text, count=1)
+                target_line_edit.setText(new_text)
+            elif current_text:
+                # No hex color found, append to existing style
                 target_line_edit.setText(f"{current_text} {color_hex}")
             else:
+                # Empty field, just set the color
                 target_line_edit.setText(color_hex)
 
     def _create_widget_for_schema(self, prop_schema: Dict) -> QWidget:
@@ -906,8 +914,21 @@ class StarshipConfigurator(QMainWindow):
                 module_schema = self.schema_data['properties'].get(module_name, {})
                 print(f"🔍 DEBUG: module_schema keys: {list(module_schema.keys())}")
 
-                # Check for allOf pattern (common in JSON schemas)
-                if 'allOf' in module_schema:
+                # Resolve $ref if present (Starship schema uses $ref to $defs)
+                if '$ref' in module_schema:
+                    ref_path = module_schema['$ref']
+                    print(f"🔍 DEBUG: Resolving $ref: {ref_path}")
+                    # Extract definition name from "#/$defs/DirectoryConfig" format
+                    if ref_path.startswith('#/$defs/'):
+                        def_name = ref_path.replace('#/$defs/', '')
+                        if '$defs' in self.schema_data and def_name in self.schema_data['$defs']:
+                            resolved_schema = self.schema_data['$defs'][def_name]
+                            schema_props = resolved_schema.get('properties', {})
+                            schema_description = resolved_schema.get('description', None)
+                            print(f"🔍 DEBUG: Resolved to {def_name}, found {len(schema_props)} properties")
+                        else:
+                            print(f"🔍 DEBUG: Could not resolve $ref: {ref_path}")
+                elif 'allOf' in module_schema:
                     print(f"🔍 DEBUG: '{module_name}' uses allOf pattern, extracting properties...")
                     for item in module_schema['allOf']:
                         if 'properties' in item:
@@ -916,8 +937,8 @@ class StarshipConfigurator(QMainWindow):
                             break
                 else:
                     schema_props = module_schema.get('properties', {})
+                    schema_description = module_schema.get('description', None)
 
-                schema_description = module_schema.get('description', None)
                 print(f"🔍 DEBUG: Found {len(schema_props) if schema_props else 0} schema properties for '{module_name}'")
             else:
                 print(f"🔍 DEBUG: No schema data available yet for '{module_name}'")
