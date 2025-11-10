@@ -1208,6 +1208,49 @@ accent = "#ff0000"
 
         return doc
 
+    def _format_prompt_string_for_display(self, prompt_string: str) -> str:
+        """Format a prompt string for nice display - one module per line with backslashes."""
+        if not prompt_string:
+            return ""
+
+        import re
+
+        # If it already has newlines and backslashes, keep it as-is
+        if '\n' in prompt_string and '\\' in prompt_string:
+            return prompt_string
+
+        # Split on module boundaries ($word or [...](...))
+        # Insert newlines and backslashes for readability
+        result = []
+        current_line = ""
+
+        # Find all tokens: $module_name, [text](style), or [ ](style)
+        pattern = r'(\$[a-z_]+|\[[^\]]*\]\([^\)]+\))'
+        tokens = re.findall(pattern, prompt_string)
+
+        for token in tokens:
+            if current_line:
+                result.append(current_line + '\\')
+                current_line = token
+            else:
+                current_line = token
+
+        # Add the last line without backslash
+        if current_line:
+            result.append(current_line)
+
+        return '\n'.join(result)
+
+    def _format_prompt_string_for_save(self, display_string: str) -> str:
+        """Convert display format (with newlines and backslashes) back to single line."""
+        if not display_string:
+            return ""
+
+        # Remove backslashes at line ends and join all lines
+        lines = display_string.split('\n')
+        cleaned_lines = [line.rstrip('\\').strip() for line in lines]
+        return ''.join(cleaned_lines)
+
     def _populate_ui_from_config(self):
         """Populate UI widgets from loaded configuration."""
         if not self.config_data:
@@ -1221,7 +1264,9 @@ accent = "#ff0000"
 
         # Prompt configuration
         if 'format' in self.config_data:
-            self.prompt_format_input.setPlainText(str(self.config_data['format']))
+            format_value = str(self.config_data['format'])
+            formatted_display = self._format_prompt_string_for_display(format_value)
+            self.prompt_format_input.setPlainText(formatted_display)
         if 'right_format' in self.config_data:
             self.prompt_right_format_input.setText(str(self.config_data['right_format']))
         if 'continuation_prompt' in self.config_data:
@@ -1508,8 +1553,10 @@ accent = "#ff0000"
         self.config_data['follow_symlinks'] = self.follow_symlinks_check.isChecked()
 
         # Prompt configuration
-        prompt_format = self.prompt_format_input.toPlainText().strip()
-        if prompt_format:
+        prompt_format_display = self.prompt_format_input.toPlainText().strip()
+        if prompt_format_display:
+            # Convert from display format (with newlines/backslashes) to save format (single line)
+            prompt_format = self._format_prompt_string_for_save(prompt_format_display)
             self.config_data['format'] = prompt_format
         elif 'format' in self.config_data:
             del self.config_data['format']
