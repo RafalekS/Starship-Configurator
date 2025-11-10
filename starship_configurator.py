@@ -530,6 +530,7 @@ class StarshipConfigurator(QMainWindow):
         style_h_layout.addWidget(style_input, stretch=3)
         color_btn = QPushButton("🎨 Pick Color")
         color_btn.clicked.connect(lambda: self._open_color_picker(style_input))
+        print(f"🔍 DEBUG: Created '🎨 Pick Color' button for '{module_name}'")
         style_h_layout.addWidget(color_btn, stretch=1)
         common_layout.addWidget(style_container, row, 1)
         self.module_widgets[module_name]['fields']['style'] = style_input
@@ -547,6 +548,7 @@ class StarshipConfigurator(QMainWindow):
 
         # Schema-based fields (if schema available)
         if schema_props:
+            print(f"🔍 DEBUG: Adding Module-Specific Settings section for '{module_name}'")
             schema_group = QGroupBox("Module-Specific Settings")
             schema_layout = QGridLayout()
             schema_row = 0
@@ -568,8 +570,11 @@ class StarshipConfigurator(QMainWindow):
                 if schema_row > 10:  # Limit fields to avoid overwhelming UI
                     break
 
+            print(f"🔍 DEBUG: Added {schema_row} module-specific fields for '{module_name}'")
             schema_group.setLayout(schema_layout)
             layout.addWidget(schema_group)
+        else:
+            print(f"🔍 DEBUG: No schema_props for '{module_name}' - skipping Module-Specific Settings")
 
         # Help text
         help_label = QLabel(f'💡 <a href="https://starship.rs/config/#{module_name}">View {module_name} documentation</a>')
@@ -895,10 +900,15 @@ class StarshipConfigurator(QMainWindow):
             # Get schema for this module if available
             schema_props = None
             schema_description = None
+            print(f"🔍 DEBUG: Creating panel for '{module_name}'")
+            print(f"🔍 DEBUG: schema_data available: {self.schema_data is not None}")
             if self.schema_data and 'properties' in self.schema_data:
                 module_schema = self.schema_data['properties'].get(module_name, {})
                 schema_props = module_schema.get('properties', {})
                 schema_description = module_schema.get('description', None)
+                print(f"🔍 DEBUG: Found {len(schema_props) if schema_props else 0} schema properties for '{module_name}'")
+            else:
+                print(f"🔍 DEBUG: No schema data available yet for '{module_name}'")
 
             panel = self._create_module_panel(module_name, schema_props, schema_description)
 
@@ -1142,10 +1152,13 @@ class StarshipConfigurator(QMainWindow):
     def _on_schema_loaded(self, schema: Dict):
         """Handle successful schema loading."""
         self.schema_data = schema
+        print("🔍 DEBUG: Schema loaded successfully!")
+        print(f"🔍 DEBUG: Schema has {len(schema.get('properties', {}))} module definitions")
         self.status_bar.showMessage("✅ Schema loaded - enhanced fields available", 5000)
 
     def _on_schema_failed(self, error: str):
         """Handle schema loading failure."""
+        print(f"🔍 DEBUG: Schema failed to load: {error}")
         self.status_bar.showMessage(f"⚠️ Schema unavailable: {error}", 5000)
 
     # === Utility Methods ===
