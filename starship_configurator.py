@@ -1220,19 +1220,26 @@ accent = "#ff0000"
 
         print(f"🔍 DEBUG: Config keys: {list(self.config_data.keys())}")
         custom_sections = []
-        for key in self.config_data.keys():
-            if key.startswith('custom.') or key.startswith('env_var.'):
-                print(f"🔍 DEBUG: Found custom/env_var key: {key}")
-                try:
-                    # Create a mini document with just this section
-                    mini_doc = tomlkit.document()
-                    mini_doc[key] = self.config_data[key]
-                    # Get the TOML string representation
-                    section_toml = mini_doc.as_string()
-                    print(f"🔍 DEBUG: Serialized {key} to {len(section_toml)} chars")
-                    custom_sections.append(section_toml.strip())
-                except Exception as e:
-                    print(f"🔍 DEBUG: Error serializing {key}: {e}")
+
+        # Check for nested 'custom' and 'env_var' tables
+        for parent_key in ['custom', 'env_var']:
+            if parent_key in self.config_data:
+                parent_table = self.config_data[parent_key]
+                print(f"🔍 DEBUG: Found '{parent_key}' key with subtables: {list(parent_table.keys()) if isinstance(parent_table, dict) else 'not a dict'}")
+
+                if isinstance(parent_table, dict):
+                    for child_key, child_value in parent_table.items():
+                        full_key = f"{parent_key}.{child_key}"
+                        print(f"🔍 DEBUG: Processing {full_key}")
+                        try:
+                            # Create a mini document with the dotted section
+                            mini_doc = tomlkit.document()
+                            mini_doc[full_key] = child_value
+                            section_toml = mini_doc.as_string()
+                            print(f"🔍 DEBUG: Serialized {full_key} to {len(section_toml)} chars")
+                            custom_sections.append(section_toml.strip())
+                        except Exception as e:
+                            print(f"🔍 DEBUG: Error serializing {full_key}: {e}")
 
         print(f"🔍 DEBUG: Found {len(custom_sections)} custom sections")
         if custom_sections:
@@ -1251,19 +1258,25 @@ accent = "#ff0000"
 
         print(f"🔍 DEBUG: Config keys: {list(self.config_data.keys())}")
         palette_sections = []
-        for key in self.config_data.keys():
-            if key.startswith('palettes.'):
-                print(f"🔍 DEBUG: Found palettes key: {key}")
-                try:
-                    # Create a mini document with just this section
-                    mini_doc = tomlkit.document()
-                    mini_doc[key] = self.config_data[key]
-                    # Get the TOML string representation
-                    section_toml = mini_doc.as_string()
-                    print(f"🔍 DEBUG: Serialized {key} to {len(section_toml)} chars")
-                    palette_sections.append(section_toml.strip())
-                except Exception as e:
-                    print(f"🔍 DEBUG: Error serializing {key}: {e}")
+
+        # Check for nested 'palettes' table
+        if 'palettes' in self.config_data:
+            palettes_table = self.config_data['palettes']
+            print(f"🔍 DEBUG: Found 'palettes' key with subtables: {list(palettes_table.keys())}")
+
+            if isinstance(palettes_table, dict):
+                for palette_name, palette_value in palettes_table.items():
+                    full_key = f"palettes.{palette_name}"
+                    print(f"🔍 DEBUG: Processing palette: {full_key}")
+                    try:
+                        # Create a mini document with the dotted section notation
+                        mini_doc = tomlkit.document()
+                        mini_doc[full_key] = palette_value
+                        section_toml = mini_doc.as_string()
+                        print(f"🔍 DEBUG: Serialized {full_key} to {len(section_toml)} chars")
+                        palette_sections.append(section_toml.strip())
+                    except Exception as e:
+                        print(f"🔍 DEBUG: Error serializing {full_key}: {e}")
 
         print(f"🔍 DEBUG: Found {len(palette_sections)} palette sections")
         if palette_sections:
