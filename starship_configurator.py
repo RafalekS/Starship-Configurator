@@ -303,6 +303,35 @@ class StarshipConfigurator(QMainWindow):
         general_group.setLayout(general_layout)
         panel_layout.addWidget(general_group)
 
+        # === Prompt Configuration ===
+        prompt_group = QGroupBox("Prompt Configuration")
+        prompt_layout = QGridLayout()
+        row = 0
+
+        prompt_layout.addWidget(QLabel("Format:"), row, 0)
+        self.prompt_format_input = QLineEdit()
+        self.prompt_format_input.setPlaceholderText("Custom prompt format (leave empty for default)")
+        self.prompt_format_input.setToolTip("Define the format of the entire prompt. See: https://starship.rs/config/#prompt")
+        prompt_layout.addWidget(self.prompt_format_input, row, 1)
+        row += 1
+
+        prompt_layout.addWidget(QLabel("Right Format:"), row, 0)
+        self.prompt_right_format_input = QLineEdit()
+        self.prompt_right_format_input.setPlaceholderText("Right-aligned prompt format")
+        self.prompt_right_format_input.setToolTip("Enable a right-aligned prompt segment")
+        prompt_layout.addWidget(self.prompt_right_format_input, row, 1)
+        row += 1
+
+        prompt_layout.addWidget(QLabel("Continuation Prompt:"), row, 0)
+        self.prompt_continuation_input = QLineEdit()
+        self.prompt_continuation_input.setPlaceholderText("Prompt for continuation lines")
+        self.prompt_continuation_input.setToolTip("The prompt for continuation lines (default: '[∙](bright-black) ')")
+        prompt_layout.addWidget(self.prompt_continuation_input, row, 1)
+        row += 1
+
+        prompt_group.setLayout(prompt_layout)
+        panel_layout.addWidget(prompt_group)
+
         # === UI Settings ===
         ui_group = QGroupBox("User Interface Settings")
         ui_layout = QGridLayout()
@@ -1080,6 +1109,14 @@ accent = "#ff0000"
         self.command_timeout_spin.setValue(self.config_data.get('command_timeout', 500))
         self.follow_symlinks_check.setChecked(self.config_data.get('follow_symlinks', True))
 
+        # Prompt configuration
+        if 'format' in self.config_data:
+            self.prompt_format_input.setText(str(self.config_data['format']))
+        if 'right_format' in self.config_data:
+            self.prompt_right_format_input.setText(str(self.config_data['right_format']))
+        if 'continuation_prompt' in self.config_data:
+            self.prompt_continuation_input.setText(str(self.config_data['continuation_prompt']))
+
         # Load custom modules and env_var sections
         self._load_custom_modules_from_config()
 
@@ -1097,16 +1134,15 @@ accent = "#ff0000"
         custom_sections = []
         for key in self.config_data.keys():
             if key.startswith('custom.') or key.startswith('env_var.'):
-                # Serialize this section to TOML
-                section_toml = f"[{key}]\n"
-                section_data = self.config_data[key]
-                if isinstance(section_data, dict):
-                    for prop_key, prop_val in section_data.items():
-                        section_toml += f"{prop_key} = {tomlkit.item(prop_val).as_string()}\n"
-                    custom_sections.append(section_toml)
+                # Create a mini document with just this section
+                mini_doc = tomlkit.document()
+                mini_doc[key] = self.config_data[key]
+                # Get the TOML string representation
+                section_toml = mini_doc.as_string()
+                custom_sections.append(section_toml.strip())
 
         if custom_sections:
-            self.custom_modules_editor.setPlainText('\n'.join(custom_sections))
+            self.custom_modules_editor.setPlainText('\n\n'.join(custom_sections))
 
     def _load_palettes_from_config(self):
         """Extract palettes.* sections from config."""
@@ -1116,16 +1152,15 @@ accent = "#ff0000"
         palette_sections = []
         for key in self.config_data.keys():
             if key.startswith('palettes.'):
-                # Serialize this section to TOML
-                section_toml = f"[{key}]\n"
-                section_data = self.config_data[key]
-                if isinstance(section_data, dict):
-                    for prop_key, prop_val in section_data.items():
-                        section_toml += f"{prop_key} = {tomlkit.item(prop_val).as_string()}\n"
-                    palette_sections.append(section_toml)
+                # Create a mini document with just this section
+                mini_doc = tomlkit.document()
+                mini_doc[key] = self.config_data[key]
+                # Get the TOML string representation
+                section_toml = mini_doc.as_string()
+                palette_sections.append(section_toml.strip())
 
         if palette_sections:
-            self.palettes_editor.setPlainText('\n'.join(palette_sections))
+            self.palettes_editor.setPlainText('\n\n'.join(palette_sections))
 
     def _update_full_editor(self):
         """Update the full TOML editor with current config."""
@@ -1322,6 +1357,25 @@ accent = "#ff0000"
         self.config_data['scan_timeout'] = self.scan_timeout_spin.value()
         self.config_data['command_timeout'] = self.command_timeout_spin.value()
         self.config_data['follow_symlinks'] = self.follow_symlinks_check.isChecked()
+
+        # Prompt configuration
+        prompt_format = self.prompt_format_input.text().strip()
+        if prompt_format:
+            self.config_data['format'] = prompt_format
+        elif 'format' in self.config_data:
+            del self.config_data['format']
+
+        prompt_right_format = self.prompt_right_format_input.text().strip()
+        if prompt_right_format:
+            self.config_data['right_format'] = prompt_right_format
+        elif 'right_format' in self.config_data:
+            del self.config_data['right_format']
+
+        prompt_continuation = self.prompt_continuation_input.text().strip()
+        if prompt_continuation:
+            self.config_data['continuation_prompt'] = prompt_continuation
+        elif 'continuation_prompt' in self.config_data:
+            del self.config_data['continuation_prompt']
 
         # Module settings
         for module_name, widget_dict in self.module_widgets.items():
