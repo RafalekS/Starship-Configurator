@@ -904,7 +904,19 @@ class StarshipConfigurator(QMainWindow):
             print(f"🔍 DEBUG: schema_data available: {self.schema_data is not None}")
             if self.schema_data and 'properties' in self.schema_data:
                 module_schema = self.schema_data['properties'].get(module_name, {})
-                schema_props = module_schema.get('properties', {})
+                print(f"🔍 DEBUG: module_schema keys: {list(module_schema.keys())}")
+
+                # Check for allOf pattern (common in JSON schemas)
+                if 'allOf' in module_schema:
+                    print(f"🔍 DEBUG: '{module_name}' uses allOf pattern, extracting properties...")
+                    for item in module_schema['allOf']:
+                        if 'properties' in item:
+                            schema_props = item['properties']
+                            print(f"🔍 DEBUG: Found properties in allOf: {list(schema_props.keys())[:5]}")
+                            break
+                else:
+                    schema_props = module_schema.get('properties', {})
+
                 schema_description = module_schema.get('description', None)
                 print(f"🔍 DEBUG: Found {len(schema_props) if schema_props else 0} schema properties for '{module_name}'")
             else:
@@ -1154,6 +1166,16 @@ class StarshipConfigurator(QMainWindow):
         self.schema_data = schema
         print("🔍 DEBUG: Schema loaded successfully!")
         print(f"🔍 DEBUG: Schema has {len(schema.get('properties', {}))} module definitions")
+
+        # Debug: Show schema structure for 'directory' module
+        if 'properties' in schema and 'directory' in schema['properties']:
+            dir_schema = schema['properties']['directory']
+            print(f"🔍 DEBUG: Schema structure for 'directory': {list(dir_schema.keys())}")
+            if 'allOf' in dir_schema:
+                print(f"🔍 DEBUG: 'directory' uses 'allOf' pattern")
+            if 'properties' in dir_schema:
+                print(f"🔍 DEBUG: 'directory' has direct properties: {list(dir_schema['properties'].keys())[:5]}")
+
         self.status_bar.showMessage("✅ Schema loaded - enhanced fields available", 5000)
 
     def _on_schema_failed(self, error: str):
