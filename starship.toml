@@ -1,0 +1,294 @@
+# Enhanced Starship Configuration for PowerShell 7
+# Save this as: C:\Users\r_sta\.config\starship.toml
+
+# Global settings
+command_timeout = 1000
+scan_timeout = 100
+add_newline = true
+
+# Main prompt format with better module organization
+format = """
+$os\
+$username\
+$hostname\
+$directory\
+[](fg:#DA627D bg:#FCA17D)\
+$git_branch\
+$git_status\
+$git_commit\
+[](fg:#FCA17D bg:#86BBD8)\
+$c\
+$python\
+$nodejs\
+$rust\
+$java\
+$golang\
+$dotnet\
+[](fg:#86BBD8 bg:#06969A)\
+$docker_context\
+$kubernetes\
+[](fg:#06969A bg:#33658A)\
+$cmd_duration\
+$jobs\
+$time\
+$battery\
+[ ](fg:#33658A)\
+$line_break\
+$character"""
+
+# Right prompt for additional info (PS7 supports this well)
+right_format = """$status$memory_usage"""
+
+# Enable transient prompt for cleaner history (PS7 feature)
+# This makes previous prompts shorter after you run commands
+follow_symlinks = true
+
+[username]
+show_always = true
+style_user = "bg:#9A348E fg:#ffffff"
+style_root = "bg:#ff0000 fg:#ffffff bold"
+format = '[ $user ]($style)'
+disabled = false
+
+[hostname]
+ssh_only = false  # Show hostname when in SSH sessions
+format = '[ $hostname ]($style)'
+style = "bg:#9A348E fg:#ffffff"
+disabled = true  # Enable if you work on remote machines
+
+[os]
+style = "bg:#9A348E fg:#ffffff"
+format = '[ $symbol ]($style)'
+disabled = false
+
+[directory]
+style = "bg:#DA627D fg:#ffffff"
+format = "[ $path ]($style)"
+truncation_length = 4
+truncation_symbol = "…/"
+read_only = " 󰌾"
+use_logical_path = true
+fish_style_pwd_dir_length = 1  # Shows first char of truncated dirs
+
+[directory.substitutions]
+"Documents" = " 󰈙 "
+"c:\\Users\\r_sta\\Downloads" = " "
+"Music" = " "
+"Pictures" = " "
+"Videos" = " "
+"Desktop" = " "
+"C:/Scripts" = "󰨞 "
+"X:/Github" = "󰊤 "
+"X:/Python" = "󰌠 "
+
+# Git configuration - enhanced for your workflow
+[git_branch]
+symbol = " "
+style = "bg:#FCA17D fg:#000000"
+format = '[ $symbol$branch(:$remote_branch) ]($style)'
+truncation_length = 20
+always_show_remote = false
+
+[git_status]
+style = "bg:#FCA17D fg:#000000"
+format = '[ $all_status$ahead_behind ]($style)'
+conflicted = "⚡"
+ahead = "⇡${count}"
+behind = "⇣${count}"
+diverged = "⇕⇡${ahead_count}⇣${behind_count}"
+up_to_date = "✓"
+untracked = "?${count}"
+stashed = "$${count}"
+modified = "!${count}"
+staged = "+${count}"
+renamed = "»${count}"
+deleted = "✘${count}"
+ignore_submodules = true
+disabled = false
+
+
+[c]
+disabled = true
+
+[golang]
+disabled = true
+
+
+[java]
+disabled = true
+
+
+[rust]
+disabled = true
+
+[git_commit]
+commit_hash_length = 7
+format = '[ $hash ]($style)'
+style = "bg:#FCA17D fg:#000000"
+only_detached = true
+
+# Programming languages - optimized for your stack
+[python]
+symbol = " "
+style = "bg:#86BBD8 fg:#000000"
+format = '[ $symbol($version)(\($virtualenv\)) ]($style)'
+python_binary = ["python3", "python"]
+detect_extensions = ["py", "ipynb"]
+detect_files = ["requirements.txt", "pyproject.toml", ".python-version", "Pipfile"]
+
+[nodejs]
+symbol = " "
+style = "bg:#86BBD8 fg:#000000"
+format = '[ $symbol($version) ]($style)'
+detect_files = ["package.json", ".nvmrc", ".node-version"]
+detect_folders = ["node_modules"]
+
+# Note: PowerShell version can be shown using the custom.powershell_version module below (set disabled = false)
+
+[dotnet]
+symbol = ".NET "
+style = "bg:#86BBD8 fg:#000000"
+format = '[ $symbol($version)( 🎯$tfm) ]($style)'
+heuristic = false
+disabled = true
+
+# System information
+[cmd_duration]
+min_time = 500
+format = '[ $duration ]($style)'
+style = "bg:#33658A fg:#ffffff"
+show_milliseconds = true
+
+[jobs]
+format = '[ $symbol$number ]($style)'
+style = "bg:#33658A fg:#ffffff"
+symbol = "✦"
+number_threshold = 1
+symbol_threshold = 1
+
+[time]
+disabled = false
+time_format = "%H:%M"
+style = "bg:#33658A fg:#ffffff"
+format = '[ ♥ $time ]($style)'
+
+[memory_usage]
+disabled = false
+threshold = 75
+format = '[${ram}( | ${swap})]($style)'
+style = "dimmed yellow"
+
+[status]
+disabled = false
+format = '[$symbol$status]($style)'
+symbol = "❌ "
+success_symbol = ""
+style = "red"
+map_symbol = true
+
+[battery]
+full_symbol = "🔋"
+charging_symbol = "⚡️"
+discharging_symbol = "💀"
+format = '[$symbol$percentage]($style)'
+
+[[battery.display]]
+threshold = 15
+style = "bold red"
+
+[[battery.display]]
+threshold = 50
+style = "bold yellow"
+
+# Docker and containers
+[docker_context]
+symbol = " "
+style = "bg:#06969A fg:#ffffff"
+format = '[ $symbol$context ]($style)'
+only_with_files = true  # Always show if Docker context is set
+disabled = true
+
+[kubernetes]
+symbol = "☸ "
+style = "bg:#06969A fg:#ffffff"
+format = '[ $symbol$context( \($namespace\)) ]($style)'
+disabled = true
+detect_files = ["k8s", "Dockerfile"]
+
+# Character prompt - changes based on last command success
+[character]
+success_symbol = '[❯](bold green)'
+error_symbol = '[❯](bold red)'
+vimcmd_symbol = '[❮](bold green)'
+format = '$symbol '
+
+# Line break for better readability
+[line_break]
+disabled = false
+
+# Package information
+[package]
+symbol = "📦 "
+style = "208"
+format = '[ $symbol$version ]($style)'
+display_private = false
+
+# Additional tools you might use
+[aws]
+symbol = "  "
+format = "[ $symbol($profile)(\\($region\\)) ]($style)"
+style = "bold yellow"
+
+[terraform]
+symbol = "💠 "
+format = '[ $symbol$workspace ]($style)'
+style = "bold 105"
+
+# Container detection
+[container]
+symbol = "⬢ "
+format = '[ $symbol$name ]($style)'
+style = "red dimmed"
+
+# Environment variables that might be useful
+[env_var.VIRTUAL_ENV]
+format = '[ $env_value ]($style)'
+style = "bright-black"
+
+# Custom modules for your specific tools
+[custom.powershell_version]
+command = '$PSVersionTable.PSVersion.ToString()'
+when = 'true'
+format = '[ PS$output ]($style)'
+style = "bg:#86BBD8 fg:#000000"
+shell = ["pwsh", "-NoProfile", "-Command"]
+disabled = true  # Enable if you want to see PS version in prompt
+
+[custom.admin_check]
+command = '''
+if ((New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    "ADMIN"
+} else {
+    ""
+}
+'''
+when = 'true'
+format = '[ $output ]($style)'
+style = "red bold"
+shell = ["pwsh", "-NoProfile", "-Command"]
+disabled = true  # Enable if you want admin indicator
+
+# Palettes for consistent theming (optional enhancement)
+[palettes.main]
+background = "#1e1e2e"
+surface0 = "#313244"
+surface1 = "#45475a"
+overlay0 = "#6c7086"
+text = "#cdd6f4"
+green = "#a6e3a1"
+blue = "#89b4fa"
+red = "#f38ba8"
+yellow = "#f9e2af"
+purple = "#cba6f7"
+
+
