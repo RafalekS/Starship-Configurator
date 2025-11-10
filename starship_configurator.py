@@ -462,7 +462,7 @@ class StarshipConfigurator(QMainWindow):
 
         return tab
 
-    def _create_module_panel(self, module_name: str, schema_props: Optional[Dict] = None, description: Optional[str] = None):
+    def _create_module_panel(self, module_name: str, schema_props: Optional[Dict] = None, description: Optional[str] = None, actual_config: Optional[Dict] = None):
         """Create a configuration panel for a specific module."""
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -526,9 +526,14 @@ class StarshipConfigurator(QMainWindow):
                 field_type = prop_schema.get('type', 'string')
                 default_value = str(prop_schema.get('default', '')) if 'default' in prop_schema else ''
 
-                # Check if this is a multi-color field (e.g., "bg:#xxx fg:#yyy")
+                # Check BOTH default value AND actual config value for multi-color pattern
                 import re
-                has_multiple_colors = bool(re.findall(r'\b(bg|fg|color):', default_value))
+                actual_value = str(actual_config.get(prop_name, '')) if actual_config else ''
+                # Check if EITHER value has multi-color pattern
+                has_multiple_colors = bool(re.findall(r'\b(bg|fg|color):', default_value)) or bool(re.findall(r'\b(bg|fg|color):', actual_value))
+                # Use actual value if available, otherwise default
+                value_to_use = actual_value if actual_value else default_value
+                print(f"🔍 DEBUG: Field '{prop_name}' - has_multiple_colors={has_multiple_colors}, value='{value_to_use[:50]}'...")
 
                 # Create appropriate widget based on type and name
                 if field_type == 'string' and (is_color_field or is_symbol_field):
@@ -538,12 +543,12 @@ class StarshipConfigurator(QMainWindow):
 
                     if has_multiple_colors and is_color_field:
                         # Parse multi-color field and create separate controls
-                        self._create_multi_color_field(field_h_layout, prop_name, default_value, module_name)
+                        self._create_multi_color_field(field_h_layout, prop_name, value_to_use, module_name)
                     else:
                         # Single field with helper buttons
                         widget = QLineEdit()
-                        if default_value:
-                            widget.setText(default_value)
+                        if value_to_use:
+                            widget.setText(value_to_use)
                         if 'description' in prop_schema:
                             widget.setPlaceholderText(prop_schema['description'][:50] + "...")
 
@@ -1120,7 +1125,10 @@ class StarshipConfigurator(QMainWindow):
             else:
                 print(f"🔍 DEBUG: No schema data available yet for '{module_name}'")
 
-            panel = self._create_module_panel(module_name, schema_props, schema_description)
+            # Get actual config values for this module
+            actual_config = self.config_data.get(module_name, {}) if self.config_data else {}
+
+            panel = self._create_module_panel(module_name, schema_props, schema_description, actual_config)
 
             # Store the panel index
             panel_index = self.stacked_widget.count() - 1  # Index of the panel we just added
