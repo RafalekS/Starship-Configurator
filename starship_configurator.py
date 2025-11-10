@@ -524,40 +524,50 @@ class StarshipConfigurator(QMainWindow):
                 is_symbol_field = 'symbol' in prop_name.lower()
                 is_color_field = any(kw in prop_name.lower() for kw in ['color', 'style', 'fg', 'bg'])
                 field_type = prop_schema.get('type', 'string')
+                default_value = str(prop_schema.get('default', '')) if 'default' in prop_schema else ''
+
+                # Check if this is a multi-color field (e.g., "bg:#xxx fg:#yyy")
+                import re
+                has_multiple_colors = bool(re.findall(r'\b(bg|fg|color):', default_value))
 
                 # Create appropriate widget based on type and name
                 if field_type == 'string' and (is_color_field or is_symbol_field):
-                    # Create container with helper buttons
                     field_container = QWidget()
                     field_h_layout = QHBoxLayout(field_container)
                     field_h_layout.setContentsMargins(0, 0, 0, 0)
 
-                    widget = QLineEdit()
-                    if 'default' in prop_schema:
-                        widget.setText(str(prop_schema['default']))
-                    if 'description' in prop_schema:
-                        widget.setPlaceholderText(prop_schema['description'][:50] + "...")
+                    if has_multiple_colors and is_color_field:
+                        # Parse multi-color field and create separate controls
+                        self._create_multi_color_field(field_h_layout, prop_name, default_value, module_name)
+                    else:
+                        # Single field with helper buttons
+                        widget = QLineEdit()
+                        if default_value:
+                            widget.setText(default_value)
+                        if 'description' in prop_schema:
+                            widget.setPlaceholderText(prop_schema['description'][:50] + "...")
 
-                    field_h_layout.addWidget(widget, stretch=3)
+                        field_h_layout.addWidget(widget, stretch=3)
 
-                    # Add emoji picker for symbol fields
-                    if is_symbol_field:
-                        emoji_btn = QPushButton("😀")
-                        emoji_btn.setMaximumWidth(40)
-                        emoji_btn.setToolTip("Pick emoji")
-                        emoji_btn.clicked.connect(lambda checked, w=widget: self._open_emoji_picker(w))
-                        field_h_layout.addWidget(emoji_btn)
+                        # Add emoji picker for symbol fields
+                        if is_symbol_field:
+                            emoji_btn = QPushButton("😀")
+                            emoji_btn.setMaximumWidth(40)
+                            emoji_btn.setToolTip("Pick emoji")
+                            emoji_btn.clicked.connect(lambda checked, w=widget: self._open_emoji_picker(w))
+                            field_h_layout.addWidget(emoji_btn)
 
-                    # Add color picker for color/style fields
-                    if is_color_field:
-                        color_btn = QPushButton("🎨")
-                        color_btn.setMaximumWidth(40)
-                        color_btn.setToolTip("Pick color")
-                        color_btn.clicked.connect(lambda checked, w=widget: self._open_smart_color_picker(w))
-                        field_h_layout.addWidget(color_btn)
+                        # Add color picker for color/style fields
+                        if is_color_field:
+                            color_btn = QPushButton("🎨")
+                            color_btn.setMaximumWidth(40)
+                            color_btn.setToolTip("Pick color")
+                            color_btn.clicked.connect(lambda checked, w=widget: self._open_smart_color_picker(w))
+                            field_h_layout.addWidget(color_btn)
+
+                        self.module_widgets[module_name]['fields'][prop_name] = widget
 
                     settings_layout.addWidget(field_container, settings_row, 1)
-                    self.module_widgets[module_name]['fields'][prop_name] = widget
                 else:
                     # Regular widget without helper buttons
                     widget = self._create_widget_for_schema(prop_schema)
@@ -626,6 +636,58 @@ class StarshipConfigurator(QMainWindow):
             f"Configures the '{module_name}' module for your Starship prompt.\n"
             f"See full documentation: https://starship.rs/config/#{module_name}"
         )
+
+    def _create_multi_color_field(self, parent_layout: QHBoxLayout, prop_name: str, default_value: str, module_name: str):
+        """Create separate controls for multi-color fields like 'bg:#xxx fg:#yyy'."""
+        import re
+
+        # Parse color specifications
+        color_specs = re.findall(r'(bg|fg|color):(#[0-9a-fA-F]{6}|[a-z]+)', default_value)
+
+        # Create a composite widget that will combine values
+        composite_widget = QWidget()
+        composite_widget.color_fields = {}  # Store sub-widgets
+
+        sub_layout = QHBoxLayout()
+        sub_layout.setContentsMargins(0, 0, 0, 0)
+        sub_layout.setSpacing(5)
+
+        for spec_type, spec_value in color_specs:
+            # Label for color type
+            type_label = QLabel(f"{spec_type.upper()}:")
+            type_label.setStyleSheet("font-weight: bold; padding: 2px;")
+            sub_layout.addWidget(type_label)
+
+            # Input field for color value
+            color_input = QLineEdit()
+            color_input.setText(spec_value)
+            color_input.setMaximumWidth(80)
+            sub_layout.addWidget(color_input)
+
+            # Color picker button
+            picker_btn = QPushButton("🎨")
+            picker_btn.setMaximumWidth(30)
+            picker_btn.setToolTip(f"Pick {spec_type} color")
+            picker_btn.clicked.connect(lambda checked, w=color_input, t=spec_type: self._pick_color_for_field(w, t))
+            sub_layout.addWidget(picker_btn)
+
+            # Store reference
+            composite_widget.color_fields[spec_type] = color_input
+
+        # Add stretch to push everything to the left
+        sub_layout.addStretch()
+
+        composite_widget.setLayout(sub_layout)
+        parent_layout.addWidget(composite_widget)
+
+        # Store composite widget that combines all sub-fields
+        self.module_widgets[module_name]['fields'][prop_name] = composite_widget
+
+    def _pick_color_for_field(self, target_input: QLineEdit, color_type: str):
+        """Pick color for a specific color field (bg, fg, etc.)."""
+        color = QColorDialog.getColor()
+        if color.isValid():
+            target_input.setText(color.name())
 
     def _open_smart_color_picker(self, target_line_edit: QLineEdit):
         """Smart color picker that handles multiple color formats."""
@@ -1085,7 +1147,14 @@ class StarshipConfigurator(QMainWindow):
                 if field_name in module_config:
                     value = module_config[field_name]
 
-                    if isinstance(widget, QCheckBox):
+                    # Handle composite widgets (multi-color fields)
+                    if hasattr(widget, 'color_fields'):
+                        import re
+                        color_specs = re.findall(r'(bg|fg|color):(#[0-9a-fA-F]{6}|[a-z]+)', str(value))
+                        for spec_type, spec_value in color_specs:
+                            if spec_type in widget.color_fields:
+                                widget.color_fields[spec_type].setText(spec_value)
+                    elif isinstance(widget, QCheckBox):
                         widget.setChecked(bool(value))
                     elif isinstance(widget, QLineEdit):
                         widget.setText(str(value))
@@ -1123,7 +1192,16 @@ class StarshipConfigurator(QMainWindow):
             for field_name, widget in widget_dict.get('fields', {}).items():
                 value = None
 
-                if isinstance(widget, QCheckBox):
+                # Handle composite widgets (multi-color fields)
+                if hasattr(widget, 'color_fields'):
+                    # Combine sub-fields back into "bg:#xxx fg:#yyy" format
+                    parts = []
+                    for color_type, color_input in widget.color_fields.items():
+                        color_val = color_input.text().strip()
+                        if color_val:
+                            parts.append(f"{color_type}:{color_val}")
+                    value = ' '.join(parts) if parts else None
+                elif isinstance(widget, QCheckBox):
                     value = widget.isChecked()
                     if not value and field_name != 'disabled':
                         continue  # Don't save unchecked non-disabled checkboxes
