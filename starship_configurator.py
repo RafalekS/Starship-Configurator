@@ -15,7 +15,8 @@ from PyQt6.QtWidgets import (
     QListWidget, QStackedWidget, QLineEdit, QCheckBox, QPushButton,
     QTextEdit, QLabel, QFileDialog, QMessageBox, QGridLayout,
     QScrollArea, QGroupBox, QComboBox, QSpinBox, QListWidgetItem,
-    QToolBar, QStatusBar, QSplitter, QTabWidget, QColorDialog
+    QToolBar, QStatusBar, QSplitter, QTabWidget, QColorDialog,
+    QDialog, QDialogButtonBox
 )
 from PyQt6.QtCore import Qt, QSize, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QIcon, QAction
@@ -519,13 +520,14 @@ class StarshipConfigurator(QMainWindow):
                 label = QLabel(f"{prop_name.replace('_', ' ').title()}:")
                 settings_layout.addWidget(label, settings_row, 0)
 
-                # Check if this field is color-related
-                is_color_field = any(color_keyword in prop_name.lower()
-                                    for color_keyword in ['color', 'style', 'fg', 'bg'])
+                # Detect field type
+                is_symbol_field = 'symbol' in prop_name.lower()
+                is_color_field = any(kw in prop_name.lower() for kw in ['color', 'style', 'fg', 'bg'])
+                field_type = prop_schema.get('type', 'string')
 
-                # Create appropriate widget based on type
-                if is_color_field and prop_schema.get('type') == 'string':
-                    # Create container with color picker for color fields
+                # Create appropriate widget based on type and name
+                if field_type == 'string' and (is_color_field or is_symbol_field):
+                    # Create container with helper buttons
                     field_container = QWidget()
                     field_h_layout = QHBoxLayout(field_container)
                     field_h_layout.setContentsMargins(0, 0, 0, 0)
@@ -538,16 +540,26 @@ class StarshipConfigurator(QMainWindow):
 
                     field_h_layout.addWidget(widget, stretch=3)
 
-                    color_btn = QPushButton("🎨")
-                    color_btn.setMaximumWidth(40)
-                    color_btn.setToolTip("Pick color")
-                    color_btn.clicked.connect(lambda checked, w=widget: self._open_color_picker(w))
-                    field_h_layout.addWidget(color_btn)
+                    # Add emoji picker for symbol fields
+                    if is_symbol_field:
+                        emoji_btn = QPushButton("😀")
+                        emoji_btn.setMaximumWidth(40)
+                        emoji_btn.setToolTip("Pick emoji")
+                        emoji_btn.clicked.connect(lambda checked, w=widget: self._open_emoji_picker(w))
+                        field_h_layout.addWidget(emoji_btn)
+
+                    # Add color picker for color/style fields
+                    if is_color_field:
+                        color_btn = QPushButton("🎨")
+                        color_btn.setMaximumWidth(40)
+                        color_btn.setToolTip("Pick color")
+                        color_btn.clicked.connect(lambda checked, w=widget: self._open_smart_color_picker(w))
+                        field_h_layout.addWidget(color_btn)
 
                     settings_layout.addWidget(field_container, settings_row, 1)
                     self.module_widgets[module_name]['fields'][prop_name] = widget
                 else:
-                    # Regular widget without color picker
+                    # Regular widget without helper buttons
                     widget = self._create_widget_for_schema(prop_schema)
                     settings_layout.addWidget(widget, settings_row, 1)
                     self.module_widgets[module_name]['fields'][prop_name] = widget
@@ -615,27 +627,132 @@ class StarshipConfigurator(QMainWindow):
             f"See full documentation: https://starship.rs/config/#{module_name}"
         )
 
-    def _open_color_picker(self, target_line_edit: QLineEdit):
-        """Opens a color picker dialog and replaces/adds the color in the style field."""
-        color = QColorDialog.getColor()
-        if color.isValid():
-            color_hex = color.name()  # Returns hex like #ff0000
-            current_text = target_line_edit.text().strip()
+    def _open_smart_color_picker(self, target_line_edit: QLineEdit):
+        """Smart color picker that handles multiple color formats."""
+        import re
 
-            # Replace existing color (hex format) or append if no color exists
-            import re
-            # Match hex colors like #ff0000
-            hex_pattern = r'#[0-9a-fA-F]{6}\b'
-            if re.search(hex_pattern, current_text):
-                # Replace first hex color found
-                new_text = re.sub(hex_pattern, color_hex, current_text, count=1)
+        color = QColorDialog.getColor()
+        if not color.isValid():
+            return
+
+        color_hex = color.name()  # Returns hex like #ff0000
+        current_text = target_line_edit.text().strip()
+
+        # Pattern 1: Starship format string [text](style) - extract style and replace color
+        starship_pattern = r'\[([^\]]+)\]\(([^\)]+)\)'
+        if re.search(starship_pattern, current_text):
+            def replace_color_in_style(match):
+                text = match.group(1)
+                style = match.group(2)
+                # Replace hex color if exists, otherwise append
+                if re.search(r'#[0-9a-fA-F]{6}', style):
+                    new_style = re.sub(r'#[0-9a-fA-F]{6}', color_hex, style, count=1)
+                elif re.search(r'\b(red|green|blue|yellow|purple|cyan|white|black)\b', style):
+                    # Replace named color
+                    new_style = re.sub(r'\b(red|green|blue|yellow|purple|cyan|white|black)\b', color_hex, style, count=1)
+                else:
+                    new_style = f"{style} {color_hex}"
+                return f"[{text}]({new_style})"
+
+            new_text = re.sub(starship_pattern, replace_color_in_style, current_text, count=1)
+            target_line_edit.setText(new_text)
+            return
+
+        # Pattern 2: Multiple color specs (bg: fg:) - replace first hex or append
+        if re.search(r'\b(bg|fg|color):', current_text):
+            # Try to replace existing hex after bg:, fg:, or color:
+            if re.search(r'(bg|fg|color):#[0-9a-fA-F]{6}', current_text):
+                new_text = re.sub(r'(bg|fg|color):#[0-9a-fA-F]{6}', rf'\1:{color_hex}', current_text, count=1)
                 target_line_edit.setText(new_text)
-            elif current_text:
-                # No hex color found, append to existing style
-                target_line_edit.setText(f"{current_text} {color_hex}")
             else:
-                # Empty field, just set the color
-                target_line_edit.setText(color_hex)
+                # Append new color spec
+                target_line_edit.setText(f"{current_text} fg:{color_hex}")
+            return
+
+        # Pattern 3: Simple hex replacement
+        hex_pattern = r'#[0-9a-fA-F]{6}\b'
+        if re.search(hex_pattern, current_text):
+            new_text = re.sub(hex_pattern, color_hex, current_text, count=1)
+            target_line_edit.setText(new_text)
+            return
+
+        # Pattern 4: Named colors (red, green, etc.)
+        named_color_pattern = r'\b(red|green|blue|yellow|purple|cyan|white|black)\b'
+        if re.search(named_color_pattern, current_text):
+            new_text = re.sub(named_color_pattern, color_hex, current_text, count=1)
+            target_line_edit.setText(new_text)
+            return
+
+        # Pattern 5: No color found - append
+        if current_text:
+            target_line_edit.setText(f"{current_text} {color_hex}")
+        else:
+            target_line_edit.setText(color_hex)
+
+    def _open_emoji_picker(self, target_line_edit: QLineEdit):
+        """Opens an emoji picker dialog."""
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QGridLayout, QPushButton, QDialogButtonBox
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Pick Emoji")
+        dialog.setMinimumWidth(400)
+
+        layout = QVBoxLayout(dialog)
+
+        # Common emojis for Starship
+        starship_emojis = [
+            # General
+            "🚀", "✨", "⚡", "🔥", "💎", "🌟", "⭐", "✅", "❌", "⚠️",
+            # Arrows & symbols
+            "❯", "❮", "►", "◄", "→", "←", "↑", "↓", "»", "«",
+            # Programming
+            "🐍", "🦀", "🐹", "☕", "📦", "🔧", "⚙️", "🛠️", "💻", "📝",
+            # Git & Version Control
+            "🌱", "🌿", "🔀", "📊", "🏷️", "🔖", "📌", "🔍",
+            # Cloud & Infrastructure
+            "☁️", "🐳", "☸️", "🌐", "🖥️", "💾", "🗄️",
+            # Battery & Status
+            "🔋", "⚡", "💀", "󰁽", "󰂎", "󰁹", "󰁾", "󰂀", "󰂂", "󰁺",
+            # Time & Misc
+            "🕙", "⏱️", "⏰", "🔔", "🧙", "👤", "🏠", "📁", "📂"
+        ]
+
+        # Create grid of emoji buttons
+        grid = QGridLayout()
+        row, col = 0, 0
+        for emoji in starship_emojis:
+            btn = QPushButton(emoji)
+            btn.setFixedSize(40, 40)
+            btn.setStyleSheet("font-size: 20px;")
+            btn.clicked.connect(lambda checked, e=emoji, d=dialog: self._insert_emoji(target_line_edit, e, d))
+            grid.addWidget(btn, row, col)
+            col += 1
+            if col >= 10:
+                col = 0
+                row += 1
+
+        layout.addLayout(grid)
+
+        # Dialog buttons
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+
+        dialog.exec()
+
+    def _insert_emoji(self, target_line_edit: QLineEdit, emoji: str, dialog: QDialog):
+        """Insert selected emoji into the field."""
+        current_text = target_line_edit.text()
+        # Replace first emoji or append
+        import re
+        # Common emoji pattern (basic support)
+        emoji_pattern = r'[\U0001F300-\U0001F9FF\u2600-\u26FF\u2700-\u27BF]+'
+        if re.search(emoji_pattern, current_text):
+            new_text = re.sub(emoji_pattern, emoji, current_text, count=1)
+            target_line_edit.setText(new_text)
+        else:
+            target_line_edit.setText(emoji if not current_text else f"{emoji} {current_text}")
+        dialog.accept()
 
     def _create_widget_for_schema(self, prop_schema: Dict) -> QWidget:
         """Create appropriate widget based on JSON schema property type."""
