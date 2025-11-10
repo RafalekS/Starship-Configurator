@@ -504,22 +504,26 @@ class StarshipConfigurator(QMainWindow):
         settings_layout = QGridLayout()
         row = 0
 
-        # Format field with color picker
-        settings_layout.addWidget(QLabel("Format:"), row, 0)
+        # Format field with color picker (multi-line)
+        settings_layout.addWidget(QLabel("Format:"), row, 0, Qt.AlignmentFlag.AlignTop)
         format_container = QWidget()
-        format_h_layout = QHBoxLayout(format_container)
-        format_h_layout.setContentsMargins(0, 0, 0, 0)
+        format_v_layout = QVBoxLayout(format_container)
+        format_v_layout.setContentsMargins(0, 0, 0, 0)
 
-        self.prompt_format_input = QLineEdit()
+        self.prompt_format_input = QTextEdit()
         self.prompt_format_input.setPlaceholderText("e.g., '$all' or custom module order")
         self.prompt_format_input.setToolTip("Define the order and format of prompt modules")
-        format_h_layout.addWidget(self.prompt_format_input, stretch=3)
+        self.prompt_format_input.setMaximumHeight(150)
+        format_v_layout.addWidget(self.prompt_format_input)
 
+        format_btn_layout = QHBoxLayout()
         format_color_btn = QPushButton("🎨")
         format_color_btn.setMaximumWidth(40)
         format_color_btn.setToolTip("Pick color for format")
         format_color_btn.clicked.connect(lambda: self._open_smart_color_picker(self.prompt_format_input))
-        format_h_layout.addWidget(format_color_btn)
+        format_btn_layout.addWidget(format_color_btn)
+        format_btn_layout.addStretch()
+        format_v_layout.addLayout(format_btn_layout)
 
         settings_layout.addWidget(format_container, row, 1)
         row += 1
@@ -905,8 +909,8 @@ accent = "#ff0000"
         if color.isValid():
             target_input.setText(color.name())
 
-    def _open_smart_color_picker(self, target_line_edit: QLineEdit):
-        """Smart color picker that handles multiple color formats."""
+    def _open_smart_color_picker(self, target_widget):
+        """Smart color picker that handles multiple color formats. Works with QLineEdit and QTextEdit."""
         import re
 
         color = QColorDialog.getColor()
@@ -914,7 +918,12 @@ accent = "#ff0000"
             return
 
         color_hex = color.name()  # Returns hex like #ff0000
-        current_text = target_line_edit.text().strip()
+
+        # Handle both QLineEdit and QTextEdit
+        if isinstance(target_widget, QTextEdit):
+            current_text = target_widget.toPlainText().strip()
+        else:
+            current_text = target_widget.text().strip()
 
         # Pattern 1: Starship format string [text](style) - extract style and replace color
         starship_pattern = r'\[([^\]]+)\]\(([^\)]+)\)'
@@ -933,7 +942,10 @@ accent = "#ff0000"
                 return f"[{text}]({new_style})"
 
             new_text = re.sub(starship_pattern, replace_color_in_style, current_text, count=1)
-            target_line_edit.setText(new_text)
+            if isinstance(target_widget, QTextEdit):
+                target_widget.setPlainText(new_text)
+            else:
+                target_widget.setText(new_text)
             return
 
         # Pattern 2: Multiple color specs (bg: fg:) - replace first hex or append
@@ -941,31 +953,44 @@ accent = "#ff0000"
             # Try to replace existing hex after bg:, fg:, or color:
             if re.search(r'(bg|fg|color):#[0-9a-fA-F]{6}', current_text):
                 new_text = re.sub(r'(bg|fg|color):#[0-9a-fA-F]{6}', rf'\1:{color_hex}', current_text, count=1)
-                target_line_edit.setText(new_text)
             else:
                 # Append new color spec
-                target_line_edit.setText(f"{current_text} fg:{color_hex}")
+                new_text = f"{current_text} fg:{color_hex}"
+            if isinstance(target_widget, QTextEdit):
+                target_widget.setPlainText(new_text)
+            else:
+                target_widget.setText(new_text)
             return
 
         # Pattern 3: Simple hex replacement
         hex_pattern = r'#[0-9a-fA-F]{6}\b'
         if re.search(hex_pattern, current_text):
             new_text = re.sub(hex_pattern, color_hex, current_text, count=1)
-            target_line_edit.setText(new_text)
+            if isinstance(target_widget, QTextEdit):
+                target_widget.setPlainText(new_text)
+            else:
+                target_widget.setText(new_text)
             return
 
         # Pattern 4: Named colors (red, green, etc.)
         named_color_pattern = r'\b(red|green|blue|yellow|purple|cyan|white|black)\b'
         if re.search(named_color_pattern, current_text):
             new_text = re.sub(named_color_pattern, color_hex, current_text, count=1)
-            target_line_edit.setText(new_text)
+            if isinstance(target_widget, QTextEdit):
+                target_widget.setPlainText(new_text)
+            else:
+                target_widget.setText(new_text)
             return
 
         # Pattern 5: No color found - append
         if current_text:
-            target_line_edit.setText(f"{current_text} {color_hex}")
+            new_text = f"{current_text} {color_hex}"
         else:
-            target_line_edit.setText(color_hex)
+            new_text = color_hex
+        if isinstance(target_widget, QTextEdit):
+            target_widget.setPlainText(new_text)
+        else:
+            target_widget.setText(new_text)
 
     def _open_emoji_picker(self, target_line_edit: QLineEdit):
         """Opens an emoji picker dialog."""
@@ -1196,7 +1221,7 @@ accent = "#ff0000"
 
         # Prompt configuration
         if 'format' in self.config_data:
-            self.prompt_format_input.setText(str(self.config_data['format']))
+            self.prompt_format_input.setPlainText(str(self.config_data['format']))
         if 'right_format' in self.config_data:
             self.prompt_right_format_input.setText(str(self.config_data['right_format']))
         if 'continuation_prompt' in self.config_data:
@@ -1483,7 +1508,7 @@ accent = "#ff0000"
         self.config_data['follow_symlinks'] = self.follow_symlinks_check.isChecked()
 
         # Prompt configuration
-        prompt_format = self.prompt_format_input.text().strip()
+        prompt_format = self.prompt_format_input.toPlainText().strip()
         if prompt_format:
             self.config_data['format'] = prompt_format
         elif 'format' in self.config_data:
