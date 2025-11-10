@@ -187,11 +187,19 @@ class StarshipConfigurator(QMainWindow):
         global_tab = self._create_global_settings_tab()
         self.main_tabs.addTab(global_tab, "⚙️ Global Settings")
 
-        # === TAB 3: Preview ===
+        # === TAB 3: Custom Modules ===
+        custom_tab = self._create_custom_modules_tab()
+        self.main_tabs.addTab(custom_tab, "🛠️ Custom Modules")
+
+        # === TAB 4: Palettes ===
+        palettes_tab = self._create_palettes_tab()
+        self.main_tabs.addTab(palettes_tab, "🎨 Palettes")
+
+        # === TAB 5: Preview ===
         preview_tab = self._create_preview_tab()
         self.main_tabs.addTab(preview_tab, "✨ Preview")
 
-        # === TAB 4: TOML Editor ===
+        # === TAB 6: TOML Editor ===
         toml_tab = self._create_toml_editor_tab()
         self.main_tabs.addTab(toml_tab, "📝 TOML Editor")
 
@@ -459,6 +467,95 @@ class StarshipConfigurator(QMainWindow):
         button_layout.addStretch()
 
         layout.addLayout(button_layout)
+
+        return tab
+
+    def _create_custom_modules_tab(self) -> QWidget:
+        """Create the custom modules tab for custom.* configurations."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(10, 10, 10, 10)
+
+        # Title
+        title = QLabel("🛠️ Custom Modules")
+        title.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px;")
+        layout.addWidget(title)
+
+        desc = QLabel("Create custom command modules that execute shell commands and display the output in your prompt.\nDocs: https://starship.rs/config/#custom-commands")
+        desc.setWordWrap(True)
+        desc.setStyleSheet("padding: 5px; color: #666;")
+        layout.addWidget(desc)
+
+        # Custom modules editor
+        self.custom_modules_editor = QTextEdit()
+        self.custom_modules_editor.setPlaceholderText("""Example custom module:
+
+[custom.my_command]
+command = "echo 'test'"
+when = "true"
+format = "[ $output ]($style)"
+style = "bold green"
+shell = ["bash", "-c"]
+description = "My custom module"
+
+[env_var.MY_VAR]
+variable = "MY_VAR"
+format = "[ $env_value ]($style)"
+style = "bright-black"
+""")
+        self.custom_modules_editor.setFont(QFont("Monospace", 10))
+        layout.addWidget(self.custom_modules_editor)
+
+        # Info text
+        info = QLabel("💡 Custom modules are named 'custom.*' and env var modules are named 'env_var.*'")
+        info.setStyleSheet("padding: 5px; color: #0066cc;")
+        layout.addWidget(info)
+
+        return tab
+
+    def _create_palettes_tab(self) -> QWidget:
+        """Create the palettes tab for color palette definitions."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(10, 10, 10, 10)
+
+        # Title
+        title = QLabel("🎨 Color Palettes")
+        title.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px;")
+        layout.addWidget(title)
+
+        desc = QLabel("Define color palettes for consistent theming across your prompt.\nDocs: https://starship.rs/config/#style-strings")
+        desc.setWordWrap(True)
+        desc.setStyleSheet("padding: 5px; color: #666;")
+        layout.addWidget(desc)
+
+        # Palettes editor
+        self.palettes_editor = QTextEdit()
+        self.palettes_editor.setPlaceholderText("""Example palette:
+
+[palettes.main]
+background = "#1e1e2e"
+surface0 = "#313244"
+text = "#cdd6f4"
+green = "#a6e3a1"
+blue = "#89b4fa"
+red = "#f38ba8"
+yellow = "#f9e2af"
+
+[palettes.dark]
+bg = "#000000"
+fg = "#ffffff"
+accent = "#ff0000"
+
+# Use in modules with: style = "$palettes.main.green"
+""")
+        self.palettes_editor.setFont(QFont("Monospace", 10))
+        layout.addWidget(self.palettes_editor)
+
+        # Info text
+        info = QLabel("💡 Reference palette colors in other modules using: style = \"$palettes.main.green\"")
+        info.setStyleSheet("padding: 5px; color: #0066cc;")
+        layout.addWidget(info)
 
         return tab
 
@@ -983,8 +1080,52 @@ class StarshipConfigurator(QMainWindow):
         self.command_timeout_spin.setValue(self.config_data.get('command_timeout', 500))
         self.follow_symlinks_check.setChecked(self.config_data.get('follow_symlinks', True))
 
+        # Load custom modules and env_var sections
+        self._load_custom_modules_from_config()
+
+        # Load palettes
+        self._load_palettes_from_config()
+
         # Module settings will be loaded when panels are created
         self._update_full_editor()
+
+    def _load_custom_modules_from_config(self):
+        """Extract custom.* and env_var.* sections from config."""
+        if not self.config_data:
+            return
+
+        custom_sections = []
+        for key in self.config_data.keys():
+            if key.startswith('custom.') or key.startswith('env_var.'):
+                # Serialize this section to TOML
+                section_toml = f"[{key}]\n"
+                section_data = self.config_data[key]
+                if isinstance(section_data, dict):
+                    for prop_key, prop_val in section_data.items():
+                        section_toml += f"{prop_key} = {tomlkit.item(prop_val).as_string()}\n"
+                    custom_sections.append(section_toml)
+
+        if custom_sections:
+            self.custom_modules_editor.setPlainText('\n'.join(custom_sections))
+
+    def _load_palettes_from_config(self):
+        """Extract palettes.* sections from config."""
+        if not self.config_data:
+            return
+
+        palette_sections = []
+        for key in self.config_data.keys():
+            if key.startswith('palettes.'):
+                # Serialize this section to TOML
+                section_toml = f"[{key}]\n"
+                section_data = self.config_data[key]
+                if isinstance(section_data, dict):
+                    for prop_key, prop_val in section_data.items():
+                        section_toml += f"{prop_key} = {tomlkit.item(prop_val).as_string()}\n"
+                    palette_sections.append(section_toml)
+
+        if palette_sections:
+            self.palettes_editor.setPlainText('\n'.join(palette_sections))
 
     def _update_full_editor(self):
         """Update the full TOML editor with current config."""
@@ -1227,7 +1368,51 @@ class StarshipConfigurator(QMainWindow):
                 elif field_name in module_table:
                     del module_table[field_name]
 
+        # Merge in custom modules and env_var sections from editor
+        self._merge_custom_modules_to_config()
+
+        # Merge in palettes from editor
+        self._merge_palettes_to_config()
+
         self._update_full_editor()
+
+    def _merge_custom_modules_to_config(self):
+        """Merge custom.* and env_var.* sections from editor into config."""
+        custom_text = self.custom_modules_editor.toPlainText().strip()
+        if not custom_text:
+            return
+
+        # Remove existing custom.* and env_var.* sections
+        keys_to_remove = [k for k in self.config_data.keys() if k.startswith('custom.') or k.startswith('env_var.')]
+        for key in keys_to_remove:
+            del self.config_data[key]
+
+        # Parse and add new ones
+        try:
+            parsed = tomlkit.parse(custom_text)
+            for key, value in parsed.items():
+                self.config_data[key] = value
+        except Exception as e:
+            print(f"⚠️ Error parsing custom modules: {e}")
+
+    def _merge_palettes_to_config(self):
+        """Merge palettes.* sections from editor into config."""
+        palette_text = self.palettes_editor.toPlainText().strip()
+        if not palette_text:
+            return
+
+        # Remove existing palettes.* sections
+        keys_to_remove = [k for k in self.config_data.keys() if k.startswith('palettes.')]
+        for key in keys_to_remove:
+            del self.config_data[key]
+
+        # Parse and add new ones
+        try:
+            parsed = tomlkit.parse(palette_text)
+            for key, value in parsed.items():
+                self.config_data[key] = value
+        except Exception as e:
+            print(f"⚠️ Error parsing palettes: {e}")
 
     # === Actions ===
 
